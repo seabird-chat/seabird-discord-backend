@@ -104,6 +104,8 @@ func (b *Backend) handleMessageCreate(s *discordgo.Session, m *discordgo.Message
 		return
 	}
 
+	rawText := m.ContentWithMentionsReplaced()
+
 	ok, err := ComesFromDM(s, m)
 	if err != nil {
 		b.logger.Warn().Err(err).Msg("failed to determine if message is private")
@@ -116,7 +118,7 @@ func (b *Backend) handleMessageCreate(s *discordgo.Session, m *discordgo.Message
 				Id:          m.ChannelID,
 				DisplayName: m.Author.Username,
 			},
-			Text: m.Content,
+			Text: rawText,
 		}}})
 		return
 	}
@@ -129,8 +131,8 @@ func (b *Backend) handleMessageCreate(s *discordgo.Session, m *discordgo.Message
 		},
 	}
 
-	if strings.HasPrefix(m.Content, b.cmdPrefix) {
-		msgParts := strings.SplitN(m.Content, " ", 2)
+	if strings.HasPrefix(rawText, b.cmdPrefix) {
+		msgParts := strings.SplitN(rawText, " ", 2)
 		if len(msgParts) < 2 {
 			msgParts = append(msgParts, "")
 		}
@@ -148,16 +150,19 @@ func (b *Backend) handleMessageCreate(s *discordgo.Session, m *discordgo.Message
 
 	mentionPrefix := fmt.Sprintf("<@!%s> ", s.State.User.ID)
 	if strings.HasPrefix(m.Content, mentionPrefix) {
+		msg := *m.Message
+		msg.Content = strings.TrimPrefix(m.Content, mentionPrefix)
+
 		b.writeEvent(&pb.ChatEvent{Inner: &pb.ChatEvent_Mention{Mention: &pb.MentionEvent{
 			Source: source,
-			Text:   strings.TrimPrefix(m.Content, mentionPrefix),
+			Text:   msg.ContentWithMentionsReplaced(),
 		}}})
 		return
 	}
 
 	b.writeEvent(&pb.ChatEvent{Inner: &pb.ChatEvent_Message{Message: &pb.MessageEvent{
 		Source: source,
-		Text:   m.Content,
+		Text:   rawText,
 	}}})
 }
 

@@ -98,8 +98,8 @@ func (b *Backend) handleChannelEdit(s *discordgo.Session, m *discordgo.ChannelUp
 }
 
 func (b *Backend) handleMessageCreate(s *discordgo.Session, m *discordgo.MessageCreate) {
-	// Ignore all messages created by the bot itself This isn't required but
-	// it's a good practice.
+	// Ignore all messages created by the bot itself. This is a requirement from
+	// the chat ingest API.
 	if m.Author.ID == s.State.User.ID {
 		return
 	}
@@ -113,13 +113,23 @@ func (b *Backend) handleMessageCreate(s *discordgo.Session, m *discordgo.Message
 	}
 
 	if ok {
-		b.writeEvent(&pb.ChatEvent{Inner: &pb.ChatEvent_PrivateMessage{PrivateMessage: &pb.PrivateMessageEvent{
-			Source: &pb.User{
-				Id:          m.ChannelID,
-				DisplayName: m.Author.Username,
-			},
-			Text: rawText,
-		}}})
+		if text, ok := ActionText(rawText); ok {
+			b.writeEvent(&pb.ChatEvent{Inner: &pb.ChatEvent_PrivateAction{PrivateAction: &pb.PrivateActionEvent{
+				Source: &pb.User{
+					Id:          m.ChannelID,
+					DisplayName: m.Author.Username,
+				},
+				Text: text,
+			}}})
+		} else {
+			b.writeEvent(&pb.ChatEvent{Inner: &pb.ChatEvent_PrivateMessage{PrivateMessage: &pb.PrivateMessageEvent{
+				Source: &pb.User{
+					Id:          m.ChannelID,
+					DisplayName: m.Author.Username,
+				},
+				Text: rawText,
+			}}})
+		}
 		return
 	}
 
@@ -129,6 +139,14 @@ func (b *Backend) handleMessageCreate(s *discordgo.Session, m *discordgo.Message
 			Id:          m.Author.ID,
 			DisplayName: m.Author.Username,
 		},
+	}
+
+	if text, ok := ActionText(rawText); ok {
+		b.writeEvent(&pb.ChatEvent{Inner: &pb.ChatEvent_Action{Action: &pb.ActionEvent{
+			Source: source,
+			Text:   text,
+		}}})
+		return
 	}
 
 	if strings.HasPrefix(rawText, b.cmdPrefix) {

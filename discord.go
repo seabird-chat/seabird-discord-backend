@@ -18,6 +18,8 @@ func ComesFromDM(s *discordgo.Session, m *discordgo.MessageCreate) (bool, error)
 	return channel.Type == discordgo.ChannelTypeDM, nil
 }
 
+// ActionText tries to guess if a message was an action. It returns the action
+// text without formatting and if it thinks the text was an action.
 func ActionText(rawText string) (string, bool) {
 	text := strings.TrimPrefix(strings.TrimSuffix(rawText, "_"), "_")
 

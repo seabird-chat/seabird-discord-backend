@@ -5,13 +5,14 @@ import (
 	"errors"
 	"fmt"
 	"strings"
-	"sync"
+	"time"
 
 	"github.com/bwmarrin/discordgo"
 	"github.com/rs/zerolog"
 	"golang.org/x/sync/errgroup"
 
-	"github.com/seabird-chat/seabird-discord-backend/pb"
+	seabird "github.com/seabird-chat/seabird-go"
+	"github.com/seabird-chat/seabird-go/pb"
 )
 
 type DiscordConfig struct {
@@ -24,27 +25,25 @@ type DiscordConfig struct {
 }
 
 type Backend struct {
-	id             string
-	cmdPrefix      string
-	logger         zerolog.Logger
-	discord        *discordgo.Session
-	grpc           pb.ChatIngestClient
-	ingestSendLock sync.Mutex
-	ingestStream   pb.ChatIngest_IngestEventsClient
+	id           string
+	cmdPrefix    string
+	logger       zerolog.Logger
+	discord      *discordgo.Session
+	grpc         *seabird.ChatIngestClient
+	outputStream chan *pb.ChatEvent
 }
 
 func New(config DiscordConfig) (*Backend, error) {
 	var err error
 
-	b := &Backend{
-		id:        config.SeabirdID,
-		logger:    config.Logger,
-		cmdPrefix: config.CommandPrefix,
-	}
+	client, err := seabird.NewChatIngestClient(config.SeabirdHost, config.SeabirdToken)
 
-	b.grpc, err = newGRPCClient(config.SeabirdHost, config.SeabirdToken)
-	if err != nil {
-		return nil, err
+	b := &Backend{
+		id:           config.SeabirdID,
+		logger:       config.Logger,
+		cmdPrefix:    config.CommandPrefix,
+		grpc:         client,
+		outputStream: make(chan *pb.ChatEvent, 10),
 	}
 
 	b.discord, err = discordgo.New(config.DiscordToken)
@@ -207,77 +206,85 @@ func (b *Backend) writeFailure(id string, reason string) {
 }
 
 func (b *Backend) writeEvent(e *pb.ChatEvent) {
-	b.ingestSendLock.Lock()
-	defer b.ingestSendLock.Unlock()
-
-	err := b.ingestStream.Send(e)
-	if err != nil {
-		b.logger.Warn().Err(err).Msg("failed to send event")
+	// Note that we need to allow events to be dropped so we don't lose the
+	// connection when the gRPC service is down.
+	select {
+	case b.outputStream <- e:
+	default:
 	}
 }
 
-func (b *Backend) handleIngest(ctx context.Context) error {
+func (b *Backend) handleIngest(ctx context.Context) {
+	ingestStream, err := b.grpc.IngestEvents("discord", b.id)
+	if err != nil {
+		b.logger.Warn().Err(err).Msg("got error while calling ingest events")
+		return
+	}
+
 	for {
-		msg, err := b.ingestStream.Recv()
-		if err != nil {
-			return err
-		}
+		select {
+		case event := <-b.outputStream:
+			b.logger.Debug().Msgf("Sending event: %+v", event)
 
-		switch v := msg.Inner.(type) {
-		case *pb.ChatRequest_SendMessage:
-			_, err = b.discord.ChannelMessageSend(v.SendMessage.ChannelId, v.SendMessage.Text)
-		case *pb.ChatRequest_SendPrivateMessage:
-			// TODO: this might not work
-			_, err = b.discord.ChannelMessageSend(v.SendPrivateMessage.UserId, v.SendPrivateMessage.Text)
-		case *pb.ChatRequest_JoinChannel:
-			err = errors.New("unimplemented for discord")
-		case *pb.ChatRequest_LeaveChannel:
-			err = errors.New("unimplemented for discord")
-		case *pb.ChatRequest_UpdateChannelInfo:
-			_, err = b.discord.ChannelEditComplex(v.UpdateChannelInfo.ChannelId, &discordgo.ChannelEdit{
-				Topic: v.UpdateChannelInfo.Topic,
-			})
-		default:
-			b.logger.Warn().Msgf("unknown msg type: %T", msg.Inner)
-		}
-
-		if msg.Id != "" {
+			err := ingestStream.Send(event)
 			if err != nil {
-				b.writeFailure(msg.Id, err.Error())
-			} else {
-				b.writeSuccess(msg.Id)
+				b.logger.Warn().Err(err).Msgf("got error while sending event: %+v", event)
+				return
+			}
+
+		case msg, ok := <-ingestStream.C:
+			if !ok {
+				b.logger.Warn().Err(errors.New("ingest stream ended")).Msg("unexpected end of ingest stream")
+				return
+			}
+
+			switch v := msg.Inner.(type) {
+			case *pb.ChatRequest_SendMessage:
+				_, err = b.discord.ChannelMessageSend(v.SendMessage.ChannelId, v.SendMessage.Text)
+			case *pb.ChatRequest_SendPrivateMessage:
+				// TODO: this might not work
+				_, err = b.discord.ChannelMessageSend(v.SendPrivateMessage.UserId, v.SendPrivateMessage.Text)
+			case *pb.ChatRequest_JoinChannel:
+				err = errors.New("unimplemented for discord")
+			case *pb.ChatRequest_LeaveChannel:
+				err = errors.New("unimplemented for discord")
+			case *pb.ChatRequest_UpdateChannelInfo:
+				_, err = b.discord.ChannelEditComplex(v.UpdateChannelInfo.ChannelId, &discordgo.ChannelEdit{
+					Topic: v.UpdateChannelInfo.Topic,
+				})
+			default:
+				b.logger.Warn().Msgf("unknown msg type: %T", msg.Inner)
+			}
+
+			if msg.Id != "" {
+				if err != nil {
+					b.writeFailure(msg.Id, err.Error())
+				} else {
+					b.writeSuccess(msg.Id)
+				}
 			}
 		}
 	}
 }
 
+func (b *Backend) runGrpc(ctx context.Context) error {
+	for {
+		b.handleIngest(ctx)
+
+		// If the context exited, we're shutting down
+		err := ctx.Err()
+		if err != nil {
+			return err
+		}
+
+		time.Sleep(5 * time.Second)
+	}
+}
+
 func (b *Backend) Run() error {
-	var err error
 	errGroup, ctx := errgroup.WithContext(context.Background())
 
-	// TODO: this is an ugly place for this. It also means that calling Run
-	// multiple times will break and cause race conditions. This shouldn't
-	// happen in practice, but it's good to remember.
-	b.ingestStream, err = b.grpc.IngestEvents(ctx)
-	if err != nil {
-		return err
-	}
-
-	err = b.ingestStream.Send(&pb.ChatEvent{
-		Inner: &pb.ChatEvent_Hello{
-			Hello: &pb.HelloChatEvent{
-				BackendInfo: &pb.Backend{
-					Type: "discord",
-					Id:   b.id,
-				},
-			},
-		},
-	})
-	if err != nil {
-		return err
-	}
-
-	errGroup.Go(func() error { return b.handleIngest(ctx) })
+	errGroup.Go(func() error { return b.runGrpc(ctx) })
 	errGroup.Go(func() error {
 		err := b.discord.Open()
 		defer b.discord.Close()

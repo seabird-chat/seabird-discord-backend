@@ -270,13 +270,16 @@ func (b *Backend) handleIngest(ctx context.Context) {
 func (b *Backend) runGrpc(ctx context.Context) error {
 	for {
 		b.handleIngest(ctx)
+		b.logger.Warn().Msg("Ingest exited")
 
 		// If the context exited, we're shutting down
 		err := ctx.Err()
 		if err != nil {
+			b.logger.Info().Msg("Bot is shutting down, exiting runGrpc")
 			return err
 		}
 
+		b.logger.Info().Msg("Sleeping 5 seconds before trying ingest again")
 		time.Sleep(5 * time.Second)
 	}
 }

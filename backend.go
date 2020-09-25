@@ -37,6 +37,9 @@ func New(config DiscordConfig) (*Backend, error) {
 	var err error
 
 	client, err := seabird.NewChatIngestClient(config.SeabirdHost, config.SeabirdToken)
+	if err != nil {
+		return nil, err
+	}
 
 	b := &Backend{
 		id:           config.SeabirdID,
@@ -103,7 +106,7 @@ func (b *Backend) handleMessageCreate(s *discordgo.Session, m *discordgo.Message
 		return
 	}
 
-	rawText := m.ContentWithMentionsReplaced()
+	rawText := ReplaceMentions(b.logger, s, m.Message)
 
 	ok, err := ComesFromDM(s, m)
 	if err != nil {
@@ -172,7 +175,7 @@ func (b *Backend) handleMessageCreate(s *discordgo.Session, m *discordgo.Message
 
 		b.writeEvent(&pb.ChatEvent{Inner: &pb.ChatEvent_Mention{Mention: &pb.MentionEvent{
 			Source: source,
-			Text:   msg.ContentWithMentionsReplaced(),
+			Text:   ReplaceMentions(b.logger, s, &msg),
 		}}})
 		return
 	}

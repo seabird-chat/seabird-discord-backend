@@ -4,6 +4,7 @@ import (
 	"strings"
 
 	"github.com/bwmarrin/discordgo"
+	"github.com/rs/zerolog"
 )
 
 // ComesFromDM returns true if a message comes from a DM channel
@@ -28,4 +29,14 @@ func ActionText(rawText string) (string, bool) {
 	}
 
 	return text, !strings.Contains(text, "_")
+}
+
+func ReplaceMentions(l zerolog.Logger, s *discordgo.Session, m *discordgo.Message) string {
+	rawText, err := m.ContentWithMoreMentionsReplaced(s)
+	if err != nil {
+		l.Warn().Err(err).Msg("failed to replace mentions, falling back to less agressive mentions")
+		// rawText = m.ContentWithMentionsReplaced()
+	}
+
+	return rawText
 }

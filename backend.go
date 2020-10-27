@@ -106,11 +106,34 @@ func (b *Backend) handleMessageCreate(s *discordgo.Session, m *discordgo.Message
 		return
 	}
 
-	rawText := ReplaceMentions(b.logger, s, m.Message)
+	b.handleMessageCreateImpl(s, m)
 
+	// All attachments count as regular message events
+	source := &pb.ChannelSource{
+		ChannelId: m.ChannelID,
+		User: &pb.User{
+			Id:          m.Author.ID,
+			DisplayName: m.Author.Username,
+		},
+	}
+
+	for _, a := range m.Attachments {
+		b.writeEvent(&pb.ChatEvent{Inner: &pb.ChatEvent_Message{Message: &pb.MessageEvent{
+			Source: source,
+			Text:   fmt.Sprintf("%s: %s", a.Filename, a.URL),
+		}}})
+	}
+}
+
+func (b *Backend) handleMessageCreateImpl(s *discordgo.Session, m *discordgo.MessageCreate) {
 	ok, err := ComesFromDM(s, m)
 	if err != nil {
 		b.logger.Warn().Err(err).Msg("failed to determine if message is private")
+		return
+	}
+
+	rawText := ReplaceMentions(b.logger, s, m.Message)
+	if rawText == "" {
 		return
 	}
 

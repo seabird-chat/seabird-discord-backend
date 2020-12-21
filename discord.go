@@ -35,7 +35,7 @@ func ReplaceMentions(l zerolog.Logger, s *discordgo.Session, m *discordgo.Messag
 	rawText, err := m.ContentWithMoreMentionsReplaced(s)
 	if err != nil {
 		l.Warn().Err(err).Msg("failed to replace mentions, falling back to less agressive mentions")
-		// rawText = m.ContentWithMentionsReplaced()
+		rawText = m.ContentWithMentionsReplaced()
 	}
 
 	return rawText

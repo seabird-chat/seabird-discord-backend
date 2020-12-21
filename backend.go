@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/bwmarrin/discordgo"
@@ -25,12 +26,14 @@ type DiscordConfig struct {
 }
 
 type Backend struct {
-	id           string
-	cmdPrefix    string
-	logger       zerolog.Logger
-	discord      *discordgo.Session
-	grpc         *seabird.ChatIngestClient
-	outputStream chan *pb.ChatEvent
+	id                    string
+	cmdPrefix             string
+	logger                zerolog.Logger
+	discord               *discordgo.Session
+	grpc                  *seabird.ChatIngestClient
+	outputStream          chan *pb.ChatEvent
+	guildMentionCacheLock sync.Mutex
+	guildMentionCache     map[string]*strings.Replacer
 }
 
 func New(config DiscordConfig) (*Backend, error) {
@@ -42,11 +45,12 @@ func New(config DiscordConfig) (*Backend, error) {
 	}
 
 	b := &Backend{
-		id:           config.SeabirdID,
-		logger:       config.Logger,
-		cmdPrefix:    config.CommandPrefix,
-		grpc:         client,
-		outputStream: make(chan *pb.ChatEvent, 10),
+		id:                config.SeabirdID,
+		logger:            config.Logger,
+		cmdPrefix:         config.CommandPrefix,
+		grpc:              client,
+		outputStream:      make(chan *pb.ChatEvent, 10),
+		guildMentionCache: make(map[string]*strings.Replacer),
 	}
 
 	b.discord, err = discordgo.New(config.DiscordToken)
@@ -54,13 +58,71 @@ func New(config DiscordConfig) (*Backend, error) {
 		return nil, err
 	}
 
+	// Ideally we wouldn't need any additional intents, but in order to see all
+	// users for the mention cache, we need to have the GuildMembers and
+	// GuildPresences intents. The first makes it so we can see users, the
+	// second sends them with the GuildCreateEvent.
+	b.discord.Identify.Intents = discordgo.MakeIntent(
+		discordgo.IntentsAllWithoutPrivileged |
+			discordgo.IntentsGuildMembers |
+			discordgo.IntentsGuildPresences)
+
 	b.discord.AddHandler(b.handleMessageCreate)
 	b.discord.AddHandler(b.handleGuildCreate)
 	b.discord.AddHandler(b.handleGuildDelete)
 	//b.discord.AddHandler(b.handleChannelEdit)
 	b.discord.AddHandler(b.handleDiscordLog)
 
+	b.discord.AddHandler(b.handleGuildMemberAdd)
+	b.discord.AddHandler(b.handleGuildMemberUpdate)
+	b.discord.AddHandler(b.handleGuildMemberRemove)
+	b.discord.AddHandler(b.handleGuildMembersChunk)
+
 	return b, nil
+}
+
+func (b *Backend) markGuildMentionCacheStale(guildId string) {
+	b.guildMentionCacheLock.Lock()
+	defer b.guildMentionCacheLock.Unlock()
+
+	delete(b.guildMentionCache, guildId)
+}
+
+func (b *Backend) handleGuildMemberAdd(s *discordgo.Session, m *discordgo.GuildMemberAdd) {
+	b.markGuildMentionCacheStale(m.GuildID)
+}
+
+func (b *Backend) handleGuildMemberUpdate(s *discordgo.Session, m *discordgo.GuildMemberUpdate) {
+	b.markGuildMentionCacheStale(m.GuildID)
+}
+
+func (b *Backend) handleGuildMemberRemove(s *discordgo.Session, m *discordgo.GuildMemberRemove) {
+	b.markGuildMentionCacheStale(m.GuildID)
+}
+
+func (b *Backend) handleGuildMembersChunk(s *discordgo.Session, m *discordgo.GuildMembersChunk) {
+	b.markGuildMentionCacheStale(m.GuildID)
+}
+
+func (b *Backend) getReplacer(guildId string) *strings.Replacer {
+	b.guildMentionCacheLock.Lock()
+	defer b.guildMentionCacheLock.Unlock()
+
+	if _, ok := b.guildMentionCache[guildId]; !ok {
+		var candidates []string
+		g, err := b.discord.State.Guild(guildId)
+		if err != nil {
+			return strings.NewReplacer()
+		}
+
+		for _, m := range g.Members {
+			candidates = append(candidates, "@"+m.User.Username, m.User.Mention())
+		}
+
+		b.guildMentionCache[guildId] = strings.NewReplacer(candidates...)
+	}
+
+	return b.guildMentionCache[guildId]
 }
 
 func (b *Backend) handleGuildCreate(s *discordgo.Session, m *discordgo.GuildCreate) {
@@ -266,7 +328,13 @@ func (b *Backend) handleIngest(ctx context.Context) {
 
 			switch v := msg.Inner.(type) {
 			case *pb.ChatRequest_SendMessage:
-				_, err = b.discord.ChannelMessageSend(v.SendMessage.ChannelId, v.SendMessage.Text)
+				msgText := v.SendMessage.Text
+				if c, err := b.discord.State.Channel(v.SendMessage.ChannelId); err == nil {
+					msgText = b.getReplacer(c.GuildID).Replace(msgText)
+				} else {
+					b.logger.Warn().Err(err).Msg("Tried to send message to unknown channel")
+				}
+				_, err = b.discord.ChannelMessageSend(v.SendMessage.ChannelId, msgText)
 			case *pb.ChatRequest_SendPrivateMessage:
 				// TODO: this might not work
 				_, err = b.discord.ChannelMessageSend(v.SendPrivateMessage.UserId, v.SendPrivateMessage.Text)

@@ -430,6 +430,17 @@ func (b *Backend) handleIngest(ctx context.Context) {
 			case *pb.ChatRequest_SendPrivateMessage:
 				// TODO: this might not work
 				_, err = b.discord.ChannelMessageSend(v.SendPrivateMessage.UserId, v.SendPrivateMessage.Text)
+			case *pb.ChatRequest_PerformAction:
+				msgText := v.PerformAction.Text
+				if c, err := b.discord.State.Channel(v.PerformAction.ChannelId); err == nil {
+					msgText = b.getReplacer(c.GuildID).Replace(msgText)
+				} else {
+					b.logger.Warn().Err(err).Msg("Tried to send message to unknown channel")
+				}
+				_, err = b.discord.ChannelMessageSend(v.PerformAction.ChannelId, "_"+msgText+"_")
+			case *pb.ChatRequest_PerformPrivateAction:
+				// TODO: this might not work
+				_, err = b.discord.ChannelMessageSend(v.PerformPrivateAction.UserId, "_"+v.PerformPrivateAction.Text+"_")
 			case *pb.ChatRequest_JoinChannel:
 				err = errors.New("unimplemented for discord")
 			case *pb.ChatRequest_LeaveChannel:

@@ -1,22 +1,22 @@
 # Stage 1: Build the application
-FROM golang:1.15-buster as builder
+FROM golang:1.20-bullseye as builder
 
 RUN mkdir /build
 
-WORKDIR /src/seabird-discord-backend
+WORKDIR /app
 
 ADD ./go.mod ./go.sum ./
 RUN go mod download
 
 ADD . ./
-RUN go build -v -o /build/seabird-discord-backend ./cmd/seabird-discord-backend
+RUN go build -v -o /build/ ./cmd/*
 
 # Stage 2: Copy files and configure what we need
-FROM debian:buster-slim
+FROM debian:bullseye-slim
 
 RUN apt-get update && apt-get install -y ca-certificates && rm -rf /var/lib/apt/lists/*
 
-# Copy the built seabird into the container
+COPY entrypoint.sh /usr/local/bin/seabird-entrypoint.sh
 COPY --from=builder /build /bin
 
-ENTRYPOINT ["/bin/seabird-discord-backend"]
+ENTRYPOINT ["/usr/bin/seabird-entrypoint.sh"]

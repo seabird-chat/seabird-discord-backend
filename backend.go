@@ -69,13 +69,15 @@ func New(config DiscordConfig) (*Backend, error) {
 	}
 
 	// Convert the channel mapping into a useful format
-	for _, item := range strings.Split(config.DiscordChannelMapping, ",") {
-		split := strings.SplitN(item, ":", 2)
-		if len(split) != 2 {
-			return nil, errors.New("invalid channel mapping")
-		}
+	if config.DiscordChannelMapping != "" {
+		for _, item := range strings.Split(config.DiscordChannelMapping, ",") {
+			split := strings.SplitN(item, ":", 2)
+			if len(split) != 2 {
+				return nil, errors.New("invalid channel mapping")
+			}
 
-		b.channelMap[split[0]] = split[1]
+			b.channelMap[split[0]] = split[1]
+		}
 	}
 
 	b.discord, err = discordgo.New(config.DiscordToken)
@@ -279,10 +281,10 @@ func (b *Backend) handleMessageCreateImpl(s *discordgo.Session, m *discordgo.Mes
 		return
 	}
 
-	mentionPrefix := fmt.Sprintf("<@!%s> ", s.State.User.ID)
+	mentionPrefix := fmt.Sprintf("<@%s>", s.State.User.ID)
 	if strings.HasPrefix(m.Content, mentionPrefix) {
 		msg := *m.Message
-		msg.Content = strings.TrimPrefix(m.Content, mentionPrefix)
+		msg.Content = strings.TrimSpace(strings.TrimPrefix(m.Content, mentionPrefix))
 
 		b.writeEvent(&pb.ChatEvent{Inner: &pb.ChatEvent_Mention{Mention: &pb.MentionEvent{
 			Source: source,
@@ -484,7 +486,9 @@ func (b *Backend) runGrpc(ctx context.Context) error {
 func (b *Backend) Run() error {
 	errGroup, ctx := errgroup.WithContext(context.Background())
 
-	errGroup.Go(func() error { return b.runGrpc(ctx) })
+	errGroup.Go(func() error {
+		return b.runGrpc(ctx)
+	})
 	errGroup.Go(func() error {
 		err := b.discord.Open()
 		defer b.discord.Close()

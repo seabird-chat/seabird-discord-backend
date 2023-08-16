@@ -1,0 +1,16 @@
+[package]
+name = "seabird-discord-backend"
+version = "0.1.0"
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+anyhow = "1.0"
+async-trait = "0.1"
+envconfig = "0.10"
+log = "0.4"
+pretty_env_logger = "0.5"
+seabird = { path = "../../seabird-rs", features = ["chat-ingest-client"] }
+serenity = "0.11.6"
+tokio = { version = "1.0", features = ["rt-multi-thread"] }

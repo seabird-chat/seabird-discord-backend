@@ -428,10 +428,16 @@ func (b *Backend) handleIngest(ctx context.Context) {
 				} else {
 					b.logger.Warn().Err(err).Msg("Tried to send message to unknown channel")
 				}
-				_, err = b.discord.ChannelMessageSend(v.SendMessage.ChannelId, msgText)
+				_, err = b.discord.ChannelMessageSendComplex(v.SendMessage.ChannelId, &discordgo.MessageSend{
+					Content: msgText,
+					Flags: discordgo.MessageFlagsSuppressEmbeds,
+				})
 			case *pb.ChatRequest_SendPrivateMessage:
 				// TODO: this might not work
-				_, err = b.discord.ChannelMessageSend(v.SendPrivateMessage.UserId, v.SendPrivateMessage.Text)
+				_, err = b.discord.ChannelMessageSendComplex(v.SendPrivateMessage.UserId, &discordgo.MessageSend{
+					Content: v.SendPrivateMessage.Text,
+					Flags: discordgo.MessageFlagsSuppressEmbeds,
+				})
 			case *pb.ChatRequest_PerformAction:
 				msgText := v.PerformAction.Text
 				if c, err := b.discord.State.Channel(v.PerformAction.ChannelId); err == nil {
@@ -439,10 +445,16 @@ func (b *Backend) handleIngest(ctx context.Context) {
 				} else {
 					b.logger.Warn().Err(err).Msg("Tried to send message to unknown channel")
 				}
-				_, err = b.discord.ChannelMessageSend(v.PerformAction.ChannelId, "_"+msgText+"_")
+				_, err = b.discord.ChannelMessageSendComplex(v.PerformAction.ChannelId, &discordgo.MessageSend{
+					Content: "_"+msgText+"_",
+					Flags: discordgo.MessageFlagsSuppressEmbeds,
+				})
 			case *pb.ChatRequest_PerformPrivateAction:
 				// TODO: this might not work
-				_, err = b.discord.ChannelMessageSend(v.PerformPrivateAction.UserId, "_"+v.PerformPrivateAction.Text+"_")
+				_, err = b.discord.ChannelMessageSendComplex(v.PerformPrivateAction.UserId, &discordgo.MessageSend{
+					Content: "_"+v.PerformPrivateAction.Text+"_",
+					Flags: discordgo.MessageFlagsSuppressEmbeds,
+				})
 			case *pb.ChatRequest_JoinChannel:
 				err = errors.New("unimplemented for discord")
 			case *pb.ChatRequest_LeaveChannel:

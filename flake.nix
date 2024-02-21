@@ -23,6 +23,9 @@
           devshell.packages = [
             pkgs.protobuf
             pkgs.go
+            pkgs.gofumpt
+            pkgs.gopls
+            pkgs.gotools
           ];
         };
     });

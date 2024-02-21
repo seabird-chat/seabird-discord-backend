@@ -1623,6 +1623,10 @@ github.com/ruudk/golang-pdf417 v0.0.0-20181029194003-1af4ab5afa58/go.mod h1:6lfF
 github.com/ruudk/golang-pdf417 v0.0.0-20201230142125-a7e3863a1245/go.mod h1:pQAZKsJ8yyVxGRWYNEm9oFB8ieLgKFnamEyDmSA0BRk=
 github.com/seabird-chat/seabird-go v0.4.0 h1:veCzjLkHcQQrKDk9QQLzEBUZfaM+7bxoN2IlKbvY5Tw=
 github.com/seabird-chat/seabird-go v0.4.0/go.mod h1:n8T3/ojhVvNCnf9r/CjwusnNTg+hjeAFLakKFXS0MTk=
+github.com/seabird-chat/seabird-go v0.4.1-0.20240221061502-403534e80d64 h1:8XMCfFdKRG+cgeaAF4ifLjl5UFVYNxWOXosnW2fHKvY=
+github.com/seabird-chat/seabird-go v0.4.1-0.20240221061502-403534e80d64/go.mod h1:n8T3/ojhVvNCnf9r/CjwusnNTg+hjeAFLakKFXS0MTk=
+github.com/seabird-chat/seabird-go v0.4.1-0.20240221063203-d8e69692c30b h1:2bbORvBg4bgU3DWBWUXfNeLoFidaqK1+9EL+2awYDB8=
+github.com/seabird-chat/seabird-go v0.4.1-0.20240221063203-d8e69692c30b/go.mod h1:n8T3/ojhVvNCnf9r/CjwusnNTg+hjeAFLakKFXS0MTk=
 github.com/spaolacci/murmur3 v0.0.0-20180118202830-f09979ecbc72/go.mod h1:JwIasOWyU6f++ZhiEuf87xNszmSA2myDM2Kzu9HwQUA=
 github.com/spf13/afero v1.3.3/go.mod h1:5KUK8ByomD5Ti5Artl0RtHeI5pTF7MIDuXL3yY520V4=
 github.com/spf13/afero v1.6.0/go.mod h1:Ai8FlHk4v/PARR026UzYexafAt9roJ7LcLMAmO6Z93I=
@@ -1651,6 +1655,8 @@ github.com/yuin/goldmark v1.2.1/go.mod h1:3hX8gzYuyVAZsxl0MRgGTJEmQBFcNTphYh9dec
 github.com/yuin/goldmark v1.3.5/go.mod h1:mwnBkeHKe2W/ZEtQ+71ViKU8L12m81fl3OWwC1Zlc8k=
 github.com/yuin/goldmark v1.4.1/go.mod h1:mwnBkeHKe2W/ZEtQ+71ViKU8L12m81fl3OWwC1Zlc8k=
 github.com/yuin/goldmark v1.4.13/go.mod h1:6yULJ656Px+3vBD8DxQVa3kxgyrAnzto9xy5taEt/CY=
+github.com/yuin/goldmark v1.7.0 h1:EfOIvIMZIzHdB/R/zVrikYLPPwJlfMcNczJFMs1m6sA=
+github.com/yuin/goldmark v1.7.0/go.mod h1:uzxRWxtg69N339t3louHJ7+O03ezfj6PlliRlaOzY1E=
 github.com/zeebo/assert v1.3.0/go.mod h1:Pq9JiuJQpG8JLJdtkwrJESF0Foym2/D9XMU5ciN/wJ0=
 github.com/zeebo/xxh3 v1.0.2/go.mod h1:5NWz9Sef7zIDm2JHfFlcQvNekmcEl9ekUZQQKCYaDcA=
 go.einride.tech/aip v0.66.0/go.mod h1:qAhMsfT7plxBX+Oy7Huol6YUvZ0ZzdUz26yZsQwfl1M=

@@ -16,3 +16,5 @@
 
 *.pb.go
 .env
+.direnv
+.envrc

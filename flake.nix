@@ -26,6 +26,7 @@
             pkgs.gofumpt
             pkgs.gopls
             pkgs.gotools
+            pkgs.golangci-lint
           ];
         };
     });

@@ -9,11 +9,12 @@ import (
 	"github.com/yuin/goldmark/text"
 	"github.com/yuin/goldmark/util"
 
+	"github.com/seabird-chat/seabird-go"
 	"github.com/seabird-chat/seabird-go/pb"
 )
 
-func TextToBlocks(data string) []*pb.Block {
-	var isAction bool
+func TextToBlocks(data string) *pb.Block {
+	//var isAction bool
 
 	// If the message starts and ends with an underscore, it's an "action"
 	// message. This parsing is actually *more* accurate than Discord's because
@@ -21,7 +22,7 @@ func TextToBlocks(data string) []*pb.Block {
 	// displayed as normal italics.
 	if len(data) > 2 && strings.HasPrefix(data, "_") && strings.HasSuffix(data, "_") {
 		data = strings.TrimPrefix(strings.TrimSuffix(data, "_"), "_")
-		isAction = true
+		//isAction = true
 	}
 
 	src := []byte(data)
@@ -52,6 +53,9 @@ func TextToBlocks(data string) []*pb.Block {
 			// Custom additions
 			util.Prioritized(newMultiCharInlineParser('|', "Spoiler"), 1000),
 			util.Prioritized(newMultiCharInlineParser('~', "Strikethrough"), 1000),
+
+			// TODO: this doesn't work at the moment - it interacts in weird ways with the EmphasisParser.
+			//util.Prioritized(newMultiCharInlineParser('_', "Underline"), 1000),
 		),
 		parser.WithParagraphTransformers(
 			util.Prioritized(parser.LinkReferenceParagraphTransformer, 100),
@@ -59,27 +63,81 @@ func TextToBlocks(data string) []*pb.Block {
 	)
 	doc := parser.Parse(reader)
 
-	blocks := nodeToBlocks(doc.FirstChild())
+	blocks := nodeToBlocks(doc, src)
 
-	if isAction {
-		blocks = []*pb.Block{
-			&pb.Block{
-				Inner: &pb.Block_Action{
-					Action: &pb.ActionBlock{
-						Inner: blocks,
+	/*
+		if isAction {
+			blocks = []*pb.Block{
+				&pb.Block{
+					Inner: &pb.Block_Action{
+						Action: &pb.ActionBlock{
+							Inner: blocks,
+						},
 					},
 				},
-			},
+			}
 		}
-	}
+	*/
 
-	return blocks
+	return seabird.NewContainerBlock(blocks...)
 }
 
-func nodeToBlocks(doc ast.Node) []*pb.Block {
+func nodeToBlocks(doc ast.Node, src []byte) []*pb.Block {
 	var ret []*pb.Block
 
-	fmt.Println(doc.Type())
+	for cur := doc; cur != nil; cur = cur.NextSibling() {
+		switch node := cur.(type) {
+		case *ast.Document:
+			fmt.Println("doc")
+			ret = append(ret, seabird.NewContainerBlock(
+				nodeToBlocks(cur.FirstChild(), src)...,
+			))
+			fmt.Println("doc done")
+		case *ast.Paragraph:
+			fmt.Println("paragraph:")
+			ret = append(ret, seabird.NewContainerBlock(
+				nodeToBlocks(cur.FirstChild(), src)...,
+			))
+			fmt.Println("paragraph done")
+		case *ast.Text:
+			fmt.Println("text:", string(node.Value(src)))
+			ret = append(ret, seabird.NewTextBlock(string(node.Value(src))))
+		case *ast.Link:
+			fmt.Printf("link: %+v\n", node.Destination)
+			ret = append(ret, seabird.NewLinkBlock(
+				string(node.Destination),
+				nodeToBlocks(cur.FirstChild(), src)...,
+			))
+		case *ast.Emphasis:
+			fmt.Println("emph", node.Level)
+			if node.Level == 2 {
+				ret = append(ret, seabird.NewBoldBlock(
+					nodeToBlocks(cur.FirstChild(), src)...,
+				))
+			} else {
+				ret = append(ret, seabird.NewItalicsBlock(
+					nodeToBlocks(cur.FirstChild(), src)...,
+				))
+			}
+			fmt.Println("emph end")
+		case *multiCharDelimiterNode:
+			fmt.Printf("delim (%c): %d\n", node.BaseChar, node.Level)
+			if node.BaseChar == '~' {
+				ret = append(ret, seabird.NewStrikethroughBlock(
+					nodeToBlocks(cur.FirstChild(), src)...,
+				))
+			} else if node.BaseChar == '|' {
+				ret = append(ret, seabird.NewSpoilerBlock(
+					nodeToBlocks(cur.FirstChild(), src)...,
+				))
+			} else {
+				fmt.Println("unknown delim:", node.BaseChar)
+			}
+			fmt.Println("delim done")
+		default:
+			fmt.Printf("unknown: %T\n", node)
+		}
+	}
 
 	return ret
 }
@@ -166,26 +224,29 @@ func (p *multiCharDelimiterProcessor) CanOpenCloser(opener, closer *parser.Delim
 }
 
 func (p *multiCharDelimiterProcessor) OnMatch(consumes int) ast.Node {
-	return newMultiCharDelimiterNode(consumes, p.kind)
+	return newMultiCharDelimiterNode(consumes, p.baseChar, p.kind)
 }
 
 type multiCharDelimiterNode struct {
 	ast.BaseInline
-	Level int
-	kind  ast.NodeKind
+	Level    int
+	BaseChar byte
+	kind     ast.NodeKind
 }
 
-func newMultiCharDelimiterNode(level int, kind ast.NodeKind) ast.Node {
+func newMultiCharDelimiterNode(level int, baseChar byte, kind ast.NodeKind) ast.Node {
 	return &multiCharDelimiterNode{
-		Level: level,
-		kind:  kind,
+		Level:    level,
+		BaseChar: baseChar,
+		kind:     kind,
 	}
 }
 
 // Dump implements Node.Dump.
 func (n *multiCharDelimiterNode) Dump(source []byte, level int) {
 	m := map[string]string{
-		"Level": fmt.Sprintf("%v", n.Level),
+		"Level":    fmt.Sprintf("%v", n.Level),
+		"BaseChar": string(n.BaseChar),
 	}
 	ast.DumpHelper(n, source, level, m, nil)
 }

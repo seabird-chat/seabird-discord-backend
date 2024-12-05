@@ -5,7 +5,7 @@
     flake-utils.url = "github:numtide/flake-utils";
   };
 
-  outputs = { self, flake-utils, devshell, nixpkgs }:
+  outputs = { self, flake-utils, devshell, nixpkgs, ... }:
     flake-utils.lib.eachDefaultSystem (system: {
       devShell =
         let
@@ -21,12 +21,10 @@
           devshell.motd = "";
 
           devshell.packages = [
-            pkgs.protobuf
             pkgs.go
-            pkgs.gofumpt
-            pkgs.gopls
-            pkgs.gotools
-            pkgs.golangci-lint
+            pkgs.protobuf
+            pkgs.protoc-gen-go
+            pkgs.protoc-gen-go-grpc
           ];
         };
     });

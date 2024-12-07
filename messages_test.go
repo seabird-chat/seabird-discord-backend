@@ -12,128 +12,138 @@ import (
 
 func TestTextToBlocks(t *testing.T) {
 	var testCases = []struct {
+		name     string
 		input    string
 		expected *pb.Block
 	}{
 		// Simple Cases
 		{
-			input: "hello world",
-			expected: seabird.NewContainerBlock(
-				seabird.NewContainerBlock(
-					seabird.NewContainerBlock(
-						seabird.NewTextBlock("hello world"),
-					),
-				),
-			),
+			name:     "simple-text",
+			input:    "hello world",
+			expected: seabird.NewTextBlock("hello world"),
 		},
 		{
+			name:  "italics-simple",
 			input: "*hello world*",
-			expected: seabird.NewContainerBlock(
-				seabird.NewContainerBlock(
-					seabird.NewContainerBlock(
-						seabird.NewItalicsBlock(
-							seabird.NewTextBlock("hello world"),
-						),
-					),
-				),
+			expected: seabird.NewItalicsBlock(
+				seabird.NewTextBlock("hello world"),
 			),
 		},
 		{
+			name:  "link-simple",
 			input: "[hello](world)",
-			expected: seabird.NewContainerBlock(
-				seabird.NewContainerBlock(
-					seabird.NewContainerBlock(
-						seabird.NewLinkBlock("world",
-							seabird.NewTextBlock("hello"),
-						),
-					),
-				),
+			expected: seabird.NewLinkBlock("world",
+				seabird.NewTextBlock("hello"),
 			),
 		},
-		/*
-			{
-				input: "__hello world__",
-				expected: seabird.NewContainerBlock(
-					seabird.NewContainerBlock(
-						seabird.NewContainerBlock(
-							seabird.NewUnderlineBlock(
-								seabird.NewTextBlock("hello world"),
-							),
-						),
-					),
-				),
-			},
-		*/
+		{
+			name:  "strikethrough-simple",
+			input: "~~hello world~~",
+			expected: seabird.NewStrikethroughBlock(
+				seabird.NewTextBlock("hello world"),
+			),
+		},
+		{
+			name:  "spoiler-simple",
+			input: "||hello world||",
+			expected: seabird.NewSpoilerBlock(
+				seabird.NewTextBlock("hello world"),
+			),
+		},
+		{
+			name:  "underline-simple",
+			input: "__hello world__",
+			expected: seabird.NewUnderlineBlock(
+				seabird.NewTextBlock("hello world"),
+			),
+		},
 
 		// Complex Cases
 		{
+			name:  "strikethrough-complex",
 			input: "~a~ ~hello~ ~~~world~~~ ~~~~~asdf~~~~~",
 			expected: seabird.NewContainerBlock(
-				seabird.NewContainerBlock(
-					seabird.NewContainerBlock(
-						seabird.NewTextBlock("~a~ ~hello~ "),
-						seabird.NewStrikethroughBlock(
-							seabird.NewTextBlock("~world"),
-						),
-						seabird.NewTextBlock("~ "),
-						seabird.NewStrikethroughBlock(
-							seabird.NewTextBlock("~"),
-						),
-						seabird.NewTextBlock("asdf"),
-						seabird.NewStrikethroughBlock(
-							seabird.NewTextBlock("~"),
-						),
-					),
+				seabird.NewTextBlock("~a~ ~hello~ "),
+				seabird.NewStrikethroughBlock(
+					seabird.NewTextBlock("~world"),
+				),
+				seabird.NewTextBlock("~ "),
+				seabird.NewStrikethroughBlock(
+					seabird.NewTextBlock("~"),
+				),
+				seabird.NewTextBlock("asdf"),
+				seabird.NewStrikethroughBlock(
+					seabird.NewTextBlock("~"),
 				),
 			),
 		},
 		{
+			name:  "spoiler-complex",
 			input: "|a| |hello| |||world||| |||||asdf|||||",
 			expected: seabird.NewContainerBlock(
-				seabird.NewContainerBlock(
-					seabird.NewContainerBlock(
-						seabird.NewTextBlock("|a| |hello| "),
-						seabird.NewSpoilerBlock(
-							seabird.NewTextBlock("|world"),
-						),
-						seabird.NewTextBlock("| "),
-						seabird.NewSpoilerBlock(
-							seabird.NewTextBlock("|"),
-						),
-						seabird.NewTextBlock("asdf"),
-						seabird.NewSpoilerBlock(
-							seabird.NewTextBlock("|"),
+				seabird.NewTextBlock("|a| |hello| "),
+				seabird.NewSpoilerBlock(
+					seabird.NewTextBlock("|world"),
+				),
+				seabird.NewTextBlock("| "),
+				seabird.NewSpoilerBlock(
+					seabird.NewTextBlock("|"),
+				),
+				seabird.NewTextBlock("asdf"),
+				seabird.NewSpoilerBlock(
+					seabird.NewTextBlock("|"),
+				),
+			),
+		},
+		{
+			name:  "bold-and-italics-complex",
+			input: "*a* *hello* ***world*** *****asdf*****",
+			expected: seabird.NewContainerBlock(
+				seabird.NewItalicsBlock(
+					seabird.NewTextBlock("a"),
+				),
+				seabird.NewTextBlock(" "),
+				seabird.NewItalicsBlock(
+					seabird.NewTextBlock("hello"),
+				),
+				seabird.NewTextBlock(" "),
+				seabird.NewItalicsBlock(
+					seabird.NewBoldBlock(
+						seabird.NewTextBlock("world"),
+					),
+				),
+				seabird.NewTextBlock(" "),
+				seabird.NewItalicsBlock(
+					seabird.NewBoldBlock(
+						seabird.NewBoldBlock(
+							seabird.NewTextBlock("asdf"),
 						),
 					),
 				),
 			),
 		},
 		{
-			input: "*a* *hello* ***world*** *****asdf*****",
+			name:  "why-we-cant-have-nice-things",
+			input: "~~strike **bold** _italic__under___~~ in ||spoiled **bold**||",
 			expected: seabird.NewContainerBlock(
-				seabird.NewContainerBlock(
-					seabird.NewContainerBlock(
-						seabird.NewItalicsBlock(
-							seabird.NewTextBlock("a"),
+				seabird.NewStrikethroughBlock(
+					seabird.NewTextBlock("strike "),
+					seabird.NewBoldBlock(
+						seabird.NewTextBlock("bold"),
+					),
+					seabird.NewTextBlock(" "),
+					seabird.NewItalicsBlock(
+						seabird.NewTextBlock("italic"),
+						seabird.NewUnderlineBlock(
+							seabird.NewTextBlock("under"),
 						),
-						seabird.NewTextBlock(" "),
-						seabird.NewItalicsBlock(
-							seabird.NewTextBlock("hello"),
-						),
-						seabird.NewTextBlock(" "),
-						seabird.NewItalicsBlock(
-							seabird.NewBoldBlock(
-								seabird.NewTextBlock("world"),
-							),
-						),
-						seabird.NewTextBlock(" "),
-						seabird.NewItalicsBlock(
-							seabird.NewBoldBlock(
-								seabird.NewBoldBlock(
-									seabird.NewTextBlock("asdf"),
-								),
-							),
-						),
+					),
+				),
+				seabird.NewTextBlock(" in "),
+				seabird.NewSpoilerBlock(
+					seabird.NewTextBlock("spoiled "),
+					seabird.NewBoldBlock(
+						seabird.NewTextBlock("bold"),
 					),
 				),
 			),
@@ -141,12 +151,14 @@ func TestTextToBlocks(t *testing.T) {
 	}
 
 	for _, testCase := range testCases {
-		blocks := TextToBlocks(testCase.input)
-		expected, err := protojson.Marshal(testCase.expected)
-		assert.NoError(t, err)
-		blockJson, err := protojson.Marshal(blocks)
-		assert.NoError(t, err)
-		assert.NotNil(t, blocks)
-		assert.JSONEq(t, string(expected), string(blockJson))
+		t.Run(testCase.name, func(t *testing.T) {
+			blocks := TextToBlocks(testCase.input)
+			expected, err := protojson.Marshal(testCase.expected)
+			assert.NoError(t, err)
+			blockJson, err := protojson.Marshal(blocks)
+			assert.NoError(t, err)
+			assert.NotNil(t, blocks)
+			assert.JSONEq(t, string(expected), string(blockJson))
+		})
 	}
 }

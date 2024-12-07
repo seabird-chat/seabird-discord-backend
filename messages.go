@@ -13,6 +13,19 @@ import (
 	"github.com/seabird-chat/seabird-go/pb"
 )
 
+func collapseContainers(block *pb.Block) *pb.Block {
+	container := block.GetContainer()
+	if container == nil {
+		return block
+	}
+
+	if len(container.Inner) != 1 {
+		return block
+	}
+
+	return collapseContainers(container.Inner[0])
+}
+
 func TextToBlocks(data string) *pb.Block {
 	//var isAction bool
 
@@ -21,7 +34,7 @@ func TextToBlocks(data string) *pb.Block {
 	// the /me command blindly adds an _ to the start and end, but it's
 	// displayed as normal italics.
 	if len(data) > 2 && strings.HasPrefix(data, "_") && strings.HasSuffix(data, "_") {
-		data = strings.TrimPrefix(strings.TrimSuffix(data, "_"), "_")
+		//data = strings.TrimPrefix(strings.TrimSuffix(data, "_"), "_")
 		//isAction = true
 	}
 
@@ -55,7 +68,7 @@ func TextToBlocks(data string) *pb.Block {
 			util.Prioritized(newMultiCharInlineParser('~', "Strikethrough"), 1000),
 
 			// TODO: this doesn't work at the moment - it interacts in weird ways with the EmphasisParser.
-			//util.Prioritized(newMultiCharInlineParser('_', "Underline"), 1000),
+			util.Prioritized(newMultiCharInlineParser('_', "Underline"), 450),
 		),
 		parser.WithParagraphTransformers(
 			util.Prioritized(parser.LinkReferenceParagraphTransformer, 100),
@@ -79,7 +92,7 @@ func TextToBlocks(data string) *pb.Block {
 		}
 	*/
 
-	return seabird.NewContainerBlock(blocks...)
+	return collapseContainers(seabird.NewContainerBlock(blocks...))
 }
 
 func nodeToBlocks(doc ast.Node, src []byte) []*pb.Block {
@@ -128,6 +141,10 @@ func nodeToBlocks(doc ast.Node, src []byte) []*pb.Block {
 				))
 			} else if node.BaseChar == '|' {
 				ret = append(ret, seabird.NewSpoilerBlock(
+					nodeToBlocks(cur.FirstChild(), src)...,
+				))
+			} else if node.BaseChar == '_' {
+				ret = append(ret, seabird.NewUnderlineBlock(
 					nodeToBlocks(cur.FirstChild(), src)...,
 				))
 			} else {

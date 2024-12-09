@@ -57,8 +57,34 @@ func TestTextToBlocks(t *testing.T) {
 				seabird.NewTextBlock("hello world"),
 			),
 		},
+		{
+			name:  "list-simple",
+			input: "* hello\n* world",
+			expected: seabird.NewListBlock(
+				seabird.NewTextBlock("hello"),
+				seabird.NewTextBlock("world"),
+			),
+		},
 
 		// Complex Cases
+		{
+			name:  "list-nested",
+			input: "* hello\n  * world\n    1. ordered\n    2. list",
+			expected: seabird.NewListBlock(
+				seabird.NewContainerBlock(
+					seabird.NewTextBlock("hello"),
+					seabird.NewListBlock(
+						seabird.NewContainerBlock(
+						seabird.NewTextBlock("world"),
+						seabird.NewListBlock(
+							seabird.NewTextBlock("ordered"),
+							seabird.NewTextBlock("list"),
+						),
+						),
+					),
+				),
+			),
+		},
 		{
 			name:  "strikethrough-complex",
 			input: "~a~ ~hello~ ~~~world~~~ ~~~~~asdf~~~~~",

@@ -13,17 +13,13 @@ import (
 	"github.com/seabird-chat/seabird-go/pb"
 )
 
-func collapseContainers(block *pb.Block) *pb.Block {
-	container := block.GetContainer()
-	if container == nil {
-		return block
+func maybeContainer(blocks ...*pb.Block) *pb.Block {
+	if len(blocks) == 1 {
+		return blocks[0]
 	}
 
-	if len(container.Inner) != 1 {
-		return block
-	}
-
-	return collapseContainers(container.Inner[0])
+	fmt.Println("adding container")
+	return seabird.NewContainerBlock(blocks...)
 }
 
 func TextToBlocks(data string) *pb.Block {
@@ -92,7 +88,7 @@ func TextToBlocks(data string) *pb.Block {
 		}
 	*/
 
-	return collapseContainers(seabird.NewContainerBlock(blocks...))
+	return maybeContainer(blocks...)
 }
 
 func nodeToBlocks(doc ast.Node, src []byte) []*pb.Block {
@@ -102,15 +98,11 @@ func nodeToBlocks(doc ast.Node, src []byte) []*pb.Block {
 		switch node := cur.(type) {
 		case *ast.Document:
 			fmt.Println("doc")
-			ret = append(ret, seabird.NewContainerBlock(
-				nodeToBlocks(cur.FirstChild(), src)...,
-			))
+			ret = append(ret, maybeContainer(nodeToBlocks(cur.FirstChild(), src)...))
 			fmt.Println("doc done")
 		case *ast.Paragraph:
 			fmt.Println("paragraph:")
-			ret = append(ret, seabird.NewContainerBlock(
-				nodeToBlocks(cur.FirstChild(), src)...,
-			))
+			ret = append(ret, maybeContainer(nodeToBlocks(cur.FirstChild(), src)...))
 			fmt.Println("paragraph done")
 		case *ast.Text:
 			fmt.Println("text:", string(node.Value(src)))
@@ -121,6 +113,20 @@ func nodeToBlocks(doc ast.Node, src []byte) []*pb.Block {
 				string(node.Destination),
 				nodeToBlocks(cur.FirstChild(), src)...,
 			))
+		case *ast.List:
+			fmt.Println("list:", node)
+			ret = append(ret, seabird.NewListBlock(
+				nodeToBlocks(cur.FirstChild(), src)...,
+			))
+			fmt.Println("list end")
+		case *ast.ListItem:
+			fmt.Println("list item")
+			ret = append(ret, maybeContainer(nodeToBlocks(cur.FirstChild(), src)...))
+			fmt.Println("list item end")
+		case *ast.TextBlock:
+			fmt.Println("text block")
+			ret = append(ret, maybeContainer(nodeToBlocks(cur.FirstChild(), src)...))
+			fmt.Println("text block end")
 		case *ast.Emphasis:
 			fmt.Println("emph", node.Level)
 			if node.Level == 2 {

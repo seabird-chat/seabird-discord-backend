@@ -104,16 +104,18 @@ func nodeToBlocks(doc ast.Node, src []byte) ([]*pb.Block, error) {
 
 	for cur := doc; cur != nil; cur = cur.NextSibling() {
 		switch node := cur.(type) {
-		// case *ast.CodeBlock: // XXX: not supported, send as plain text or error
 		// case *ast.CodeSpan:
 		// case *ast.FencedCodeBlock:
-		// case *ast.HTMLBlock: // XXX: not supported, send as plain text or error
 		// case *ast.Image:
-		// case *ast.RawHTML: // XXX: not supported, send as plain text or error
 		// case *ast.String: // TODO: what's the difference between this and "Text"?
-		// case *ast.ThematicBreak: // XXX: not supported (properly) by Discord
 		// case *ast.Blockquote: // TODO: actually supported
 		// case *ast.Heading: // TODO: actually supported
+		//
+		// case *ast.ThematicBreak: // XXX: not supported (properly) by Discord
+		// case *ast.CodeBlock: // XXX: not supported, send as plain text or error
+		// case *ast.HTMLBlock: // XXX: not supported, send as plain text or error
+		// case *ast.RawHTML: // XXX: not supported, send as plain text or error
+
 		case *ast.Document:
 			nodes, err := nodeToBlocks(cur.FirstChild(), src)
 			if err != nil {

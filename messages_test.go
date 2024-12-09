@@ -18,9 +18,15 @@ func TestTextToBlocks(t *testing.T) {
 	}{
 		// Simple Cases
 		{
-			name:     "simple-text",
-			input:    "hello world",
-			expected: seabird.NewTextBlock("hello world"),
+			name:  "simple-text",
+			input: "hello world",
+			expected: seabird.NewContainerBlock(
+				// TODO: the container here is a side effect of the Linkify
+				// extension, but ideally it shouldn't exist. Maybe we can
+				// re-merge the text blocks.
+				seabird.NewTextBlock("hello"),
+				seabird.NewTextBlock(" world"),
+			),
 		},
 		{
 			name:  "italics-simple",
@@ -34,6 +40,17 @@ func TestTextToBlocks(t *testing.T) {
 			input: "[hello](world)",
 			expected: seabird.NewLinkBlock("world",
 				seabird.NewTextBlock("hello"),
+			),
+		},
+		{
+			name:  "linkify-simple",
+			input: "hello https://seabird.chat",
+			expected: seabird.NewContainerBlock(
+				seabird.NewTextBlock("hello "),
+				seabird.NewLinkBlock(
+					"https://seabird.chat",
+					seabird.NewTextBlock("https://seabird.chat"),
+				),
 			),
 		},
 		{

@@ -5,6 +5,7 @@ import (
 	"strings"
 
 	"github.com/yuin/goldmark/ast"
+	"github.com/yuin/goldmark/extension"
 	"github.com/yuin/goldmark/parser"
 	"github.com/yuin/goldmark/text"
 	"github.com/yuin/goldmark/util"
@@ -60,11 +61,15 @@ func TextToBlocks(data string) (*pb.Block, error) {
 			util.Prioritized(parser.NewEmphasisParser(), 500),
 
 			// Custom additions
+
+			// NOTE: underline must be a higher priority than the emphasis
+			// parser to work correctly.
+			util.Prioritized(newMultiCharInlineParser('_', "Underline"), 450),
+
 			util.Prioritized(newMultiCharInlineParser('|', "Spoiler"), 1000),
 			util.Prioritized(newMultiCharInlineParser('~', "Strikethrough"), 1000),
 
-			// TODO: this doesn't work at the moment - it interacts in weird ways with the EmphasisParser.
-			util.Prioritized(newMultiCharInlineParser('_', "Underline"), 450),
+			util.Prioritized(extension.NewLinkifyParser(), 1000),
 		),
 		parser.WithParagraphTransformers(
 			util.Prioritized(parser.LinkReferenceParagraphTransformer, 100),
@@ -99,6 +104,16 @@ func nodeToBlocks(doc ast.Node, src []byte) ([]*pb.Block, error) {
 
 	for cur := doc; cur != nil; cur = cur.NextSibling() {
 		switch node := cur.(type) {
+		// case *ast.Blockquote: // TODO: actually supported
+		// case *ast.CodeBlock:
+		// case *ast.CodeSpan:
+		// case *ast.FencedCodeBlock:
+		// case *ast.HTMLBlock:
+		// case *ast.Heading: // TODO: actually supported
+		// case *ast.Image:
+		// case *ast.RawHTML:
+		// case *ast.String:
+		// case *ast.ThematicBreak:
 		case *ast.Document:
 			nodes, err := nodeToBlocks(cur.FirstChild(), src)
 			if err != nil {
@@ -115,6 +130,11 @@ func nodeToBlocks(doc ast.Node, src []byte) ([]*pb.Block, error) {
 		case *ast.Text:
 			fmt.Println("text:", string(node.Value(src)))
 			ret = append(ret, seabird.NewTextBlock(string(node.Value(src))))
+		case *ast.AutoLink:
+			ret = append(ret, seabird.NewLinkBlock(
+				string(node.URL(src)),
+				seabird.NewTextBlock(string(node.Label(src))),
+			))
 		case *ast.Link:
 			fmt.Printf("link: %+v\n", node.Destination)
 			nodes, err := nodeToBlocks(cur.FirstChild(), src)
@@ -188,7 +208,7 @@ func nodeToBlocks(doc ast.Node, src []byte) ([]*pb.Block, error) {
 // This was originally based off parser.ScanDelimiter, but has been simplified
 // and tweaked to work better with how spoiler and strikethrough blocks work in
 // Discord to the point that it now no longer resembles the original.
-func ScanMultiCharDelimiter(line []byte, targetLen int, processor parser.DelimiterProcessor) *parser.Delimiter {
+func scanMultiCharDelimiter(line []byte, targetLen int, processor parser.DelimiterProcessor) *parser.Delimiter {
 	if len(line) < targetLen {
 		return nil
 	}
@@ -213,6 +233,10 @@ type multiCharInlineParser struct {
 	processor *multiCharDelimiterProcessor
 }
 
+// newMultiCharInlineParser is sort of a port of
+// extension.NewStrikethroughParser, but generalized so it can work with
+// multiple types of characters, allowing for support of underline,
+// strikethrough, and spoiler tags with the same code.
 func newMultiCharInlineParser(baseChar byte, kind string) parser.InlineParser {
 	return &multiCharInlineParser{
 		baseChar: baseChar,
@@ -240,7 +264,7 @@ func (p *multiCharInlineParser) Parse(parent ast.Node, block text.Reader, pc par
 		}
 	}
 
-	node := ScanMultiCharDelimiter(line, 2, p.processor)
+	node := scanMultiCharDelimiter(line, 2, p.processor)
 	if node == nil {
 		return nil
 	}

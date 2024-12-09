@@ -46,7 +46,7 @@ func TextToBlocks(data string) (*pb.Block, error) {
 			//util.Prioritized(parser.NewThematicBreakParser(), 200),
 			util.Prioritized(parser.NewListParser(), 300),
 			util.Prioritized(parser.NewListItemParser(), 400),
-			util.Prioritized(parser.NewCodeBlockParser(), 500),
+			//util.Prioritized(parser.NewCodeBlockParser(), 500),
 			util.Prioritized(parser.NewATXHeadingParser(), 600),
 			util.Prioritized(parser.NewFencedCodeBlockParser(), 700),
 			util.Prioritized(parser.NewBlockquoteParser(), 800),
@@ -104,16 +104,16 @@ func nodeToBlocks(doc ast.Node, src []byte) ([]*pb.Block, error) {
 
 	for cur := doc; cur != nil; cur = cur.NextSibling() {
 		switch node := cur.(type) {
-		// case *ast.Blockquote: // TODO: actually supported
-		// case *ast.CodeBlock:
+		// case *ast.CodeBlock: // XXX: not supported, send as plain text or error
 		// case *ast.CodeSpan:
 		// case *ast.FencedCodeBlock:
-		// case *ast.HTMLBlock:
-		// case *ast.Heading: // TODO: actually supported
+		// case *ast.HTMLBlock: // XXX: not supported, send as plain text or error
 		// case *ast.Image:
-		// case *ast.RawHTML:
-		// case *ast.String:
-		// case *ast.ThematicBreak:
+		// case *ast.RawHTML: // XXX: not supported, send as plain text or error
+		// case *ast.String: // TODO: what's the difference between this and "Text"?
+		// case *ast.ThematicBreak: // XXX: not supported (properly) by Discord
+		// case *ast.Blockquote: // TODO: actually supported
+		// case *ast.Heading: // TODO: actually supported
 		case *ast.Document:
 			nodes, err := nodeToBlocks(cur.FirstChild(), src)
 			if err != nil {
@@ -126,9 +126,7 @@ func nodeToBlocks(doc ast.Node, src []byte) ([]*pb.Block, error) {
 				return nil, err
 			}
 			ret = append(ret, maybeContainer(nodes...))
-
 		case *ast.Text:
-			fmt.Println("text:", string(node.Value(src)))
 			ret = append(ret, seabird.NewTextBlock(string(node.Value(src))))
 		case *ast.AutoLink:
 			ret = append(ret, seabird.NewLinkBlock(
@@ -136,38 +134,29 @@ func nodeToBlocks(doc ast.Node, src []byte) ([]*pb.Block, error) {
 				seabird.NewTextBlock(string(node.Label(src))),
 			))
 		case *ast.Link:
-			fmt.Printf("link: %+v\n", node.Destination)
 			nodes, err := nodeToBlocks(cur.FirstChild(), src)
 			if err != nil {
 				return nil, err
 			}
-
 			ret = append(ret, seabird.NewLinkBlock(string(node.Destination), nodes...))
 		case *ast.List:
-			fmt.Println("list:", node)
 			nodes, err := nodeToBlocks(cur.FirstChild(), src)
 			if err != nil {
 				return nil, err
 			}
-
 			ret = append(ret, seabird.NewListBlock(nodes...))
-			fmt.Println("list end")
 		case *ast.ListItem:
-			fmt.Println("list item")
 			nodes, err := nodeToBlocks(cur.FirstChild(), src)
 			if err != nil {
 				return nil, err
 			}
 			ret = append(ret, maybeContainer(nodes...))
-			fmt.Println("list item end")
 		case *ast.TextBlock:
-			fmt.Println("text block")
 			nodes, err := nodeToBlocks(cur.FirstChild(), src)
 			if err != nil {
 				return nil, err
 			}
 			ret = append(ret, maybeContainer(nodes...))
-			fmt.Println("text block end")
 		case *ast.Emphasis:
 			fmt.Println("emph", node.Level)
 			nodes, err := nodeToBlocks(cur.FirstChild(), src)
@@ -197,7 +186,7 @@ func nodeToBlocks(doc ast.Node, src []byte) ([]*pb.Block, error) {
 				return nil, fmt.Errorf("unknown delimiter: %c", node.BaseChar)
 			}
 		default:
-			return nil, fmt.Errorf("unknown node type: %T", node)
+			return nil, fmt.Errorf("unknown or unsupported node type: %T", node)
 		}
 	}
 

@@ -75,11 +75,11 @@ func TestTextToBlocks(t *testing.T) {
 					seabird.NewTextBlock("hello"),
 					seabird.NewListBlock(
 						seabird.NewContainerBlock(
-						seabird.NewTextBlock("world"),
-						seabird.NewListBlock(
-							seabird.NewTextBlock("ordered"),
-							seabird.NewTextBlock("list"),
-						),
+							seabird.NewTextBlock("world"),
+							seabird.NewListBlock(
+								seabird.NewTextBlock("ordered"),
+								seabird.NewTextBlock("list"),
+							),
 						),
 					),
 				),
@@ -178,7 +178,8 @@ func TestTextToBlocks(t *testing.T) {
 
 	for _, testCase := range testCases {
 		t.Run(testCase.name, func(t *testing.T) {
-			blocks := TextToBlocks(testCase.input)
+			blocks, err := TextToBlocks(testCase.input)
+			assert.NoError(t, err)
 			expected, err := protojson.Marshal(testCase.expected)
 			assert.NoError(t, err)
 			blockJson, err := protojson.Marshal(blocks)

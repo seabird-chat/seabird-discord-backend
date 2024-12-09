@@ -22,7 +22,7 @@ func maybeContainer(blocks ...*pb.Block) *pb.Block {
 	return seabird.NewContainerBlock(blocks...)
 }
 
-func TextToBlocks(data string) *pb.Block {
+func TextToBlocks(data string) (*pb.Block, error) {
 	//var isAction bool
 
 	// If the message starts and ends with an underscore, it's an "action"
@@ -72,7 +72,10 @@ func TextToBlocks(data string) *pb.Block {
 	)
 	doc := parser.Parse(reader)
 
-	blocks := nodeToBlocks(doc, src)
+	blocks, err := nodeToBlocks(doc, src)
+	if err != nil {
+		return nil, err
+	}
 
 	/*
 		if isAction {
@@ -88,81 +91,97 @@ func TextToBlocks(data string) *pb.Block {
 		}
 	*/
 
-	return maybeContainer(blocks...)
+	return maybeContainer(blocks...), nil
 }
 
-func nodeToBlocks(doc ast.Node, src []byte) []*pb.Block {
+func nodeToBlocks(doc ast.Node, src []byte) ([]*pb.Block, error) {
 	var ret []*pb.Block
 
 	for cur := doc; cur != nil; cur = cur.NextSibling() {
 		switch node := cur.(type) {
 		case *ast.Document:
-			fmt.Println("doc")
-			ret = append(ret, maybeContainer(nodeToBlocks(cur.FirstChild(), src)...))
-			fmt.Println("doc done")
+			nodes, err := nodeToBlocks(cur.FirstChild(), src)
+			if err != nil {
+				return nil, err
+			}
+			ret = append(ret, maybeContainer(nodes...))
 		case *ast.Paragraph:
-			fmt.Println("paragraph:")
-			ret = append(ret, maybeContainer(nodeToBlocks(cur.FirstChild(), src)...))
-			fmt.Println("paragraph done")
+			nodes, err := nodeToBlocks(cur.FirstChild(), src)
+			if err != nil {
+				return nil, err
+			}
+			ret = append(ret, maybeContainer(nodes...))
+
 		case *ast.Text:
 			fmt.Println("text:", string(node.Value(src)))
 			ret = append(ret, seabird.NewTextBlock(string(node.Value(src))))
 		case *ast.Link:
 			fmt.Printf("link: %+v\n", node.Destination)
-			ret = append(ret, seabird.NewLinkBlock(
-				string(node.Destination),
-				nodeToBlocks(cur.FirstChild(), src)...,
-			))
+			nodes, err := nodeToBlocks(cur.FirstChild(), src)
+			if err != nil {
+				return nil, err
+			}
+
+			ret = append(ret, seabird.NewLinkBlock(string(node.Destination), nodes...))
 		case *ast.List:
 			fmt.Println("list:", node)
-			ret = append(ret, seabird.NewListBlock(
-				nodeToBlocks(cur.FirstChild(), src)...,
-			))
+			nodes, err := nodeToBlocks(cur.FirstChild(), src)
+			if err != nil {
+				return nil, err
+			}
+
+			ret = append(ret, seabird.NewListBlock(nodes...))
 			fmt.Println("list end")
 		case *ast.ListItem:
 			fmt.Println("list item")
-			ret = append(ret, maybeContainer(nodeToBlocks(cur.FirstChild(), src)...))
+			nodes, err := nodeToBlocks(cur.FirstChild(), src)
+			if err != nil {
+				return nil, err
+			}
+			ret = append(ret, maybeContainer(nodes...))
 			fmt.Println("list item end")
 		case *ast.TextBlock:
 			fmt.Println("text block")
-			ret = append(ret, maybeContainer(nodeToBlocks(cur.FirstChild(), src)...))
+			nodes, err := nodeToBlocks(cur.FirstChild(), src)
+			if err != nil {
+				return nil, err
+			}
+			ret = append(ret, maybeContainer(nodes...))
 			fmt.Println("text block end")
 		case *ast.Emphasis:
 			fmt.Println("emph", node.Level)
+			nodes, err := nodeToBlocks(cur.FirstChild(), src)
+			if err != nil {
+				return nil, err
+			}
+
 			if node.Level == 2 {
-				ret = append(ret, seabird.NewBoldBlock(
-					nodeToBlocks(cur.FirstChild(), src)...,
-				))
+				ret = append(ret, seabird.NewBoldBlock(nodes...))
 			} else {
-				ret = append(ret, seabird.NewItalicsBlock(
-					nodeToBlocks(cur.FirstChild(), src)...,
-				))
+				ret = append(ret, seabird.NewItalicsBlock(nodes...))
 			}
 			fmt.Println("emph end")
 		case *multiCharDelimiterNode:
-			fmt.Printf("delim (%c): %d\n", node.BaseChar, node.Level)
-			if node.BaseChar == '~' {
-				ret = append(ret, seabird.NewStrikethroughBlock(
-					nodeToBlocks(cur.FirstChild(), src)...,
-				))
-			} else if node.BaseChar == '|' {
-				ret = append(ret, seabird.NewSpoilerBlock(
-					nodeToBlocks(cur.FirstChild(), src)...,
-				))
-			} else if node.BaseChar == '_' {
-				ret = append(ret, seabird.NewUnderlineBlock(
-					nodeToBlocks(cur.FirstChild(), src)...,
-				))
-			} else {
-				fmt.Println("unknown delim:", node.BaseChar)
+			nodes, err := nodeToBlocks(cur.FirstChild(), src)
+			if err != nil {
+				return nil, err
 			}
-			fmt.Println("delim done")
+
+			if node.BaseChar == '~' {
+				ret = append(ret, seabird.NewStrikethroughBlock(nodes...))
+			} else if node.BaseChar == '|' {
+				ret = append(ret, seabird.NewSpoilerBlock(nodes...))
+			} else if node.BaseChar == '_' {
+				ret = append(ret, seabird.NewUnderlineBlock(nodes...))
+			} else {
+				return nil, fmt.Errorf("unknown delimiter: %c", node.BaseChar)
+			}
 		default:
-			fmt.Printf("unknown: %T\n", node)
+			return nil, fmt.Errorf("unknown node type: %T", node)
 		}
 	}
 
-	return ret
+	return ret, nil
 }
 
 // ScanDelimiter scans a multi-character delimiter by given DelimiterProcessor.

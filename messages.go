@@ -109,11 +109,16 @@ func nodeToBlocks(doc ast.Node, src []byte) ([]*pb.Block, error) {
 
 	for cur := doc; cur != nil; cur = cur.NextSibling() {
 		switch node := cur.(type) {
-		// case *ast.Image: // XXX: not supported, send as plain text or error
-		// case *ast.ThematicBreak: // XXX: not supported (properly) by Discord
-		// case *ast.CodeBlock: // XXX: not supported, send as plain text or error
-		// case *ast.HTMLBlock: // XXX: not supported, send as plain text or error
-		// case *ast.RawHTML: // XXX: not supported, send as plain text or error
+		// NOTE: all the following nodes are disabled, as they are not supported
+		// by Discord. They should not be included in the parser configuration
+		// above, so they should never show up in the parsed output and it's
+		// alright to error if they show up.
+		//
+		// case *ast.Image:
+		// case *ast.ThematicBreak:
+		// case *ast.CodeBlock:
+		// case *ast.HTMLBlock:
+		// case *ast.RawHTML:
 
 		// Note that Text, String, and TextBlock are all separate entities and
 		// they all react differently.

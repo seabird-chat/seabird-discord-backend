@@ -111,6 +111,20 @@ func TestTextToBlocks(t *testing.T) {
 
 		// Complex Cases
 		{
+			name:  "blockquote-newlines",
+			input: "> hello world\n>\n> post-blank",
+			expected: seabird.NewBlockquoteBlock(
+				// TODO: the container here is a side effect of the Linkify
+				// extension, but ideally it shouldn't exist. Maybe we can
+				// re-merge the text blocks.
+				seabird.NewContainerBlock(
+					seabird.NewTextBlock("hello"),
+					seabird.NewTextBlock(" world"),
+				),
+				seabird.NewTextBlock("post-blank"),
+			),
+		},
+		{
 			name:  "list-nested",
 			input: "* hello\n  * world\n    1. ordered\n    2. list",
 			expected: seabird.NewListBlock(

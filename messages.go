@@ -20,7 +20,6 @@ func maybeContainer(blocks ...*pb.Block) *pb.Block {
 		return blocks[0]
 	}
 
-	fmt.Println("adding container")
 	return seabird.NewContainerBlock(blocks...)
 }
 
@@ -117,6 +116,9 @@ func nodeToBlocks(doc ast.Node, src []byte) ([]*pb.Block, error) {
 		// case *ast.HTMLBlock: // XXX: not supported, send as plain text or error
 		// case *ast.RawHTML: // XXX: not supported, send as plain text or error
 
+		// Note that Text, String, and TextBlock are all separate entities and
+		// they all react differently.
+
 		case *ast.Document:
 			nodes, err := nodeToBlocks(cur.FirstChild(), src)
 			if err != nil {
@@ -207,7 +209,6 @@ func nodeToBlocks(doc ast.Node, src []byte) ([]*pb.Block, error) {
 			}
 			ret = append(ret, maybeContainer(nodes...))
 		case *ast.Emphasis:
-			fmt.Println("emph", node.Level)
 			nodes, err := nodeToBlocks(cur.FirstChild(), src)
 			if err != nil {
 				return nil, err
@@ -218,7 +219,6 @@ func nodeToBlocks(doc ast.Node, src []byte) ([]*pb.Block, error) {
 			} else {
 				ret = append(ret, seabird.NewItalicsBlock(nodes...))
 			}
-			fmt.Println("emph end")
 		case *multiCharDelimiterNode:
 			nodes, err := nodeToBlocks(cur.FirstChild(), src)
 			if err != nil {

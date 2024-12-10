@@ -34,3 +34,4 @@ require (
 )
 
 replace github.com/seabird-chat/seabird-go => ../seabird-go
+replace github.com/yuin/goldmark => ../../goldmark

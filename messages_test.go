@@ -108,8 +108,31 @@ func TestTextToBlocks(t *testing.T) {
 				),
 			),
 		},
+		{
+			name:     "heading-simple",
+			input:    "# 1",
+			expected: seabird.NewHeadingBlock(1, seabird.NewTextBlock("1")),
+		},
 
 		// Complex Cases
+		{
+			name:  "heading-all",
+			input: "# 1\n## 2\n### 3\n#### 4",
+			expected: seabird.NewContainerBlock(
+				seabird.NewHeadingBlock(1, seabird.NewTextBlock("1")),
+				seabird.NewHeadingBlock(2, seabird.NewTextBlock("2")),
+				seabird.NewHeadingBlock(3, seabird.NewTextBlock("3")),
+
+				// TODO: the container here is a side effect of the Linkify
+				// extension, but ideally it shouldn't exist. Maybe we can
+				// re-merge the text blocks.
+				seabird.NewContainerBlock(
+					seabird.NewTextBlock("####"),
+					seabird.NewTextBlock(" 4"),
+				),
+			),
+		},
+
 		{
 			name:  "blockquote-newlines",
 			input: "> hello world\n>\n> post-blank",

@@ -47,7 +47,9 @@ func TextToBlocks(data string) (*pb.Block, error) {
 			util.Prioritized(parser.NewListParser(), 300),
 			util.Prioritized(parser.NewListItemParser(), 400),
 			//util.Prioritized(parser.NewCodeBlockParser(), 500),
-			util.Prioritized(parser.NewATXHeadingParser(), 600),
+			util.Prioritized(parser.NewATXHeadingParser(
+				parser.WithMaxHeadingLevel(3),
+			), 600),
 			util.Prioritized(parser.NewFencedCodeBlockParser(), 700),
 			util.Prioritized(parser.NewBlockquoteParser(), 800),
 			//util.Prioritized(NewHTMLBlockParser(), 900),
@@ -107,9 +109,6 @@ func nodeToBlocks(doc ast.Node, src []byte) ([]*pb.Block, error) {
 
 	for cur := doc; cur != nil; cur = cur.NextSibling() {
 		switch node := cur.(type) {
-		// case *ast.Blockquote: // TODO: actually supported
-		// case *ast.Heading: // TODO: actually supported
-		//
 		// case *ast.Image: // XXX: not supported, send as plain text or error
 		// case *ast.ThematicBreak: // XXX: not supported (properly) by Discord
 		// case *ast.CodeBlock: // XXX: not supported, send as plain text or error
@@ -140,6 +139,13 @@ func nodeToBlocks(doc ast.Node, src []byte) ([]*pb.Block, error) {
 				string(node.URL(src)),
 				seabird.NewTextBlock(string(node.Label(src))),
 			))
+		case *ast.Heading:
+			nodes, err := nodeToBlocks(cur.FirstChild(), src)
+			if err != nil {
+				return nil, err
+			}
+
+			ret = append(ret, seabird.NewHeadingBlock(node.Level, nodes...))
 		case *ast.CodeSpan:
 			var buf bytes.Buffer
 

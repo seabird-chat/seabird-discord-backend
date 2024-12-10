@@ -95,6 +95,19 @@ func TestTextToBlocks(t *testing.T) {
 				"print('hello world')",
 			),
 		},
+		{
+			name:  "blockquote-simple",
+			input: "> hello world",
+			expected: seabird.NewBlockquoteBlock(
+				seabird.NewContainerBlock(
+					// TODO: the container here is a side effect of the Linkify
+					// extension, but ideally it shouldn't exist. Maybe we can
+					// re-merge the text blocks.
+					seabird.NewTextBlock("hello"),
+					seabird.NewTextBlock(" world"),
+				),
+			),
+		},
 
 		// Complex Cases
 		{

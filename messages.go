@@ -108,11 +108,10 @@ func nodeToBlocks(doc ast.Node, src []byte) ([]*pb.Block, error) {
 
 	for cur := doc; cur != nil; cur = cur.NextSibling() {
 		switch node := cur.(type) {
-		// case *ast.Image:
-		// case *ast.String: // TODO: what's the difference between this and "Text"?
 		// case *ast.Blockquote: // TODO: actually supported
 		// case *ast.Heading: // TODO: actually supported
 		//
+		// case *ast.Image: // XXX: not supported, send as plain text or error
 		// case *ast.ThematicBreak: // XXX: not supported (properly) by Discord
 		// case *ast.CodeBlock: // XXX: not supported, send as plain text or error
 		// case *ast.HTMLBlock: // XXX: not supported, send as plain text or error
@@ -177,6 +176,12 @@ func nodeToBlocks(doc ast.Node, src []byte) ([]*pb.Block, error) {
 			data := strings.TrimSuffix(buf.String(), "\n")
 
 			ret = append(ret, seabird.NewFencedCodeBlock(lang, data))
+		case *ast.Blockquote:
+			nodes, err := nodeToBlocks(cur.FirstChild(), src)
+			if err != nil {
+				return nil, err
+			}
+			ret = append(ret, seabird.NewBlockquoteBlock(nodes...))
 		case *ast.Link:
 			nodes, err := nodeToBlocks(cur.FirstChild(), src)
 			if err != nil {

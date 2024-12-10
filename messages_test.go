@@ -87,6 +87,14 @@ func TestTextToBlocks(t *testing.T) {
 				seabird.NewTextBlock("world"),
 			),
 		},
+		{
+			name:  "fenced-code-simple",
+			input: "```python\nprint('hello world')\n```",
+			expected: seabird.NewFencedCodeBlock(
+				"python",
+				"print('hello world')",
+			),
+		},
 
 		// Complex Cases
 		{

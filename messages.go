@@ -105,8 +105,6 @@ func nodeToBlocks(doc ast.Node, src []byte) ([]*pb.Block, error) {
 
 	for cur := doc; cur != nil; cur = cur.NextSibling() {
 		switch node := cur.(type) {
-		// case *ast.CodeSpan:
-		// case *ast.FencedCodeBlock:
 		// case *ast.Image:
 		// case *ast.String: // TODO: what's the difference between this and "Text"?
 		// case *ast.Blockquote: // TODO: actually supported
@@ -159,6 +157,21 @@ func nodeToBlocks(doc ast.Node, src []byte) ([]*pb.Block, error) {
 			}
 
 			ret = append(ret, seabird.NewInlineCodeBlock(buf.String()))
+		case *ast.FencedCodeBlock:
+			var buf bytes.Buffer
+
+			lang := string(node.Language(src))
+
+			l := node.Lines().Len()
+			for i := 0; i < l; i++ {
+				line := cur.Lines().At(i)
+				buf.Write(line.Value(src))
+			}
+
+			// Trim any trailing newlines to make it a little cleaner
+			data := strings.TrimSuffix(buf.String(), "\n")
+
+			ret = append(ret, seabird.NewFencedCodeBlock(lang, data))
 		case *ast.Link:
 			nodes, err := nodeToBlocks(cur.FirstChild(), src)
 			if err != nil {

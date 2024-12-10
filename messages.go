@@ -132,6 +132,8 @@ func nodeToBlocks(doc ast.Node, src []byte) ([]*pb.Block, error) {
 			ret = append(ret, maybeContainer(nodes...))
 		case *ast.Text:
 			ret = append(ret, seabird.NewTextBlock(string(node.Value(src))))
+		case *ast.String:
+			ret = append(ret, seabird.NewTextBlock(string(node.Value)))
 		case *ast.AutoLink:
 			ret = append(ret, seabird.NewLinkBlock(
 				string(node.URL(src)),

@@ -70,10 +70,13 @@ func TextToBlocks(data string) (*pb.Block, error) {
 			util.Prioritized(newMultiCharInlineParser('|', "Spoiler"), 1000),
 			util.Prioritized(newMultiCharInlineParser('~', "Strikethrough"), 1000),
 
+			// We want to convert automatically linkified URLs to a format which
+			// seabird understands, just in case. It's better for
+			// interoperability.
 			util.Prioritized(extension.NewLinkifyParser(), 1000),
 		),
 		parser.WithParagraphTransformers(
-			util.Prioritized(parser.LinkReferenceParagraphTransformer, 100),
+		//util.Prioritized(parser.LinkReferenceParagraphTransformer, 100),
 		),
 	)
 	doc := parser.Parse(reader)

@@ -54,6 +54,11 @@ func TestTextToBlocks(t *testing.T) {
 			),
 		},
 		{
+			name:     "inline-code-simple",
+			input:    "`hello world`",
+			expected: seabird.NewInlineCodeBlock("hello world"),
+		},
+		{
 			name:  "strikethrough-simple",
 			input: "~~hello world~~",
 			expected: seabird.NewStrikethroughBlock(

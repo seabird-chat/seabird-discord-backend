@@ -1,6 +1,7 @@
 package seabird_discord
 
 import (
+	"bytes"
 	"fmt"
 	"strings"
 
@@ -135,6 +136,29 @@ func nodeToBlocks(doc ast.Node, src []byte) ([]*pb.Block, error) {
 				string(node.URL(src)),
 				seabird.NewTextBlock(string(node.Label(src))),
 			))
+		case *ast.CodeSpan:
+			var buf bytes.Buffer
+
+			for c := cur.FirstChild(); c != nil; c = c.NextSibling() {
+				text, ok := c.(*ast.Text)
+				if !ok {
+					return nil, fmt.Errorf("CodeSpan contained non-text node")
+				}
+
+				segment := text.Segment
+				value := segment.Value(src)
+
+				// If the value ends in a newline, we remove it, add a space and
+				// continue
+				if bytes.HasSuffix(value, []byte("\n")) {
+					buf.Write(value[:len(value)-1])
+					buf.Write([]byte(" "))
+				} else {
+					buf.Write(value)
+				}
+			}
+
+			ret = append(ret, seabird.NewInlineCodeBlock(buf.String()))
 		case *ast.Link:
 			nodes, err := nodeToBlocks(cur.FirstChild(), src)
 			if err != nil {

@@ -21,9 +21,6 @@ func TestTextToBlocks(t *testing.T) {
 			name:  "simple-text",
 			input: "hello world",
 			expected: seabird.NewContainerBlock(
-				// TODO: the container here is a side effect of the Linkify
-				// extension, but ideally it shouldn't exist. Maybe we can
-				// re-merge the text blocks.
 				seabird.NewTextBlock("hello"),
 				seabird.NewTextBlock(" world"),
 			),

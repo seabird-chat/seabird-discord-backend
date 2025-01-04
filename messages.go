@@ -15,6 +15,9 @@ import (
 	"github.com/seabird-chat/seabird-go/pb"
 )
 
+// TODO: support timestamps
+// TODO: support custom emoji
+
 func maybeContainer(blocks ...*pb.Block) *pb.Block {
 	if len(blocks) == 1 {
 		return blocks[0]
@@ -23,7 +26,7 @@ func maybeContainer(blocks ...*pb.Block) *pb.Block {
 	return seabird.NewContainerBlock(blocks...)
 }
 
-func TextToBlocks(data string) (*pb.Block, bool, error) {
+func TextToBlock(data string) (*pb.Block, bool, error) {
 	var isAction bool
 
 	// If the message starts and ends with an underscore, it's an "action"

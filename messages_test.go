@@ -275,7 +275,7 @@ func TestTextToBlocks(t *testing.T) {
 
 	for _, testCase := range testCases {
 		t.Run(testCase.name, func(t *testing.T) {
-			blocks, isAction, err := TextToBlocks(testCase.input)
+			blocks, isAction, err := TextToBlock(testCase.input)
 			assert.NoError(t, err)
 			assert.Equal(t, isAction, testCase.isAction)
 			expected, err := protojson.Marshal(testCase.expected)

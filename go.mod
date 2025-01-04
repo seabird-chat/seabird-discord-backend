@@ -35,4 +35,5 @@ require (
 
 replace github.com/seabird-chat/seabird-go => ../seabird-go
 
+// This fork is needed because CommonMark allows H4-H6, but Discord doesn't
 replace github.com/yuin/goldmark => github.com/belak-forks/goldmark v0.0.0-20250104065338-f2faabf722aa

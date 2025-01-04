@@ -23,16 +23,16 @@ func maybeContainer(blocks ...*pb.Block) *pb.Block {
 	return seabird.NewContainerBlock(blocks...)
 }
 
-func TextToBlocks(data string) (*pb.Block, error) {
-	//var isAction bool
+func TextToBlocks(data string) (*pb.Block, bool, error) {
+	var isAction bool
 
 	// If the message starts and ends with an underscore, it's an "action"
 	// message. This parsing is actually *more* accurate than Discord's because
 	// the /me command blindly adds an _ to the start and end, but it's
 	// displayed as normal italics.
 	if len(data) > 2 && strings.HasPrefix(data, "_") && strings.HasSuffix(data, "_") {
-		//data = strings.TrimPrefix(strings.TrimSuffix(data, "_"), "_")
-		//isAction = true
+		data = strings.TrimPrefix(strings.TrimSuffix(data, "_"), "_")
+		isAction = true
 	}
 
 	src := []byte(data)
@@ -84,24 +84,10 @@ func TextToBlocks(data string) (*pb.Block, error) {
 
 	blocks, err := nodeToBlocks(doc, src)
 	if err != nil {
-		return nil, err
+		return nil, false, err
 	}
 
-	/*
-		if isAction {
-			blocks = []*pb.Block{
-				&pb.Block{
-					Inner: &pb.Block_Action{
-						Action: &pb.ActionBlock{
-							Inner: blocks,
-						},
-					},
-				},
-			}
-		}
-	*/
-
-	return maybeContainer(blocks...), nil
+	return maybeContainer(blocks...), isAction, nil
 }
 
 func nodeToBlocks(doc ast.Node, src []byte) ([]*pb.Block, error) {

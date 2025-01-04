@@ -15,6 +15,7 @@ func TestTextToBlocks(t *testing.T) {
 		name     string
 		input    string
 		expected *pb.Block
+		isAction bool
 	}{
 		// Simple Cases
 		{
@@ -70,10 +71,16 @@ func TestTextToBlocks(t *testing.T) {
 			),
 		},
 		{
+			// NOTE: we can't start and end the underline test with a _ because
+			// then it would count as an action.
 			name:  "underline-simple",
-			input: "__hello world__",
-			expected: seabird.NewUnderlineBlock(
-				seabird.NewTextBlock("hello world"),
+			input: "start __hello world__ end",
+			expected: seabird.NewContainerBlock(
+				seabird.NewTextBlock("start "),
+				seabird.NewUnderlineBlock(
+					seabird.NewTextBlock("hello world"),
+				),
+				seabird.NewTextBlock(" end"),
 			),
 		},
 		{
@@ -251,12 +258,26 @@ func TestTextToBlocks(t *testing.T) {
 				),
 			),
 		},
+		{
+			name:  "action-simple",
+			input: "_hello world_",
+
+			// TODO: the container here is a side effect of the Linkify
+			// extension, but ideally it shouldn't exist. Maybe we can
+			// re-merge the text blocks.
+			expected: seabird.NewContainerBlock(
+				seabird.NewTextBlock("hello"),
+				seabird.NewTextBlock(" world"),
+			),
+			isAction: true,
+		},
 	}
 
 	for _, testCase := range testCases {
 		t.Run(testCase.name, func(t *testing.T) {
-			blocks, err := TextToBlocks(testCase.input)
+			blocks, isAction, err := TextToBlocks(testCase.input)
 			assert.NoError(t, err)
+			assert.Equal(t, isAction, testCase.isAction)
 			expected, err := protojson.Marshal(testCase.expected)
 			assert.NoError(t, err)
 			blockJson, err := protojson.Marshal(blocks)

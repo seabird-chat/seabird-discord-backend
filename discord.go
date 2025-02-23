@@ -35,7 +35,20 @@ func ReplaceMentions(l zerolog.Logger, s *discordgo.Session, m *discordgo.Messag
 	rawText, err := m.ContentWithMoreMentionsReplaced(s)
 	if err != nil {
 		l.Warn().Err(err).Msg("failed to replace mentions, falling back to less agressive mentions")
-		rawText = m.ContentWithMentionsReplaced()
+		return rawText
+	}
+
+	guild, err := s.State.Guild(m.GuildID)
+	if err != nil {
+		l.Warn().Err(err).Msg("failed to look up guild, skipping custom emoji")
+		return rawText
+	}
+
+	for _, emoji := range guild.Emojis {
+		rawText = strings.NewReplacer(
+			emoji.MessageFormat(),
+			":"+emoji.Name+":",
+		).Replace(rawText)
 	}
 
 	return rawText

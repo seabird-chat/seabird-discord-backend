@@ -9,7 +9,7 @@ require (
 	github.com/joho/godotenv v1.5.1
 	github.com/mattn/go-isatty v0.0.20
 	github.com/rs/zerolog v1.33.0
-	github.com/seabird-chat/seabird-go v0.4.1-0.20240221063203-d8e69692c30b
+	github.com/seabird-chat/seabird-go v0.5.0
 	github.com/stretchr/testify v1.8.4
 	github.com/yuin/goldmark v1.7.8
 	golang.org/x/sync v0.11.0

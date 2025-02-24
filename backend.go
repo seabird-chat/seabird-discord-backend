@@ -216,7 +216,7 @@ func (b *Backend) handleMessageCreate(s *discordgo.Session, m *discordgo.Message
 }
 
 func (b *Backend) handleMessageCreateImpl(s *discordgo.Session, m *discordgo.MessageCreate) {
-	ok, err := ComesFromDM(s, m)
+	fromDM, err := ComesFromDM(s, m)
 	if err != nil {
 		b.logger.Warn().Err(err).Msg("failed to determine if message is private")
 		return
@@ -227,14 +227,20 @@ func (b *Backend) handleMessageCreateImpl(s *discordgo.Session, m *discordgo.Mes
 		return
 	}
 
-	if ok {
-		if text, ok := ActionText(rawText); ok {
+	if fromDM {
+		rootBlock, isAction, err := TextToBlock(rawText)
+		if err != nil {
+			b.logger.Warn().Err(err).Msg("failed to convert message to blocks")
+			return
+		}
+
+		if isAction {
 			b.writeEvent(&pb.ChatEvent{Inner: &pb.ChatEvent_PrivateAction{PrivateAction: &pb.PrivateActionEvent{
 				Source: &pb.User{
 					Id:          m.ChannelID,
 					DisplayName: m.Author.Username,
 				},
-				Text: text,
+				RootBlock: rootBlock,
 			}}})
 		} else {
 			b.writeEvent(&pb.ChatEvent{Inner: &pb.ChatEvent_PrivateMessage{PrivateMessage: &pb.PrivateMessageEvent{
@@ -242,7 +248,7 @@ func (b *Backend) handleMessageCreateImpl(s *discordgo.Session, m *discordgo.Mes
 					Id:          m.ChannelID,
 					DisplayName: m.Author.Username,
 				},
-				Text: rawText,
+				RootBlock: rootBlock,
 			}}})
 		}
 		return
@@ -256,14 +262,8 @@ func (b *Backend) handleMessageCreateImpl(s *discordgo.Session, m *discordgo.Mes
 		},
 	}
 
-	if text, ok := ActionText(rawText); ok {
-		b.writeEvent(&pb.ChatEvent{Inner: &pb.ChatEvent_Action{Action: &pb.ActionEvent{
-			Source: source,
-			Text:   text,
-		}}})
-		return
-	}
-
+	// Special case - if the message started with the command prefix, we do much
+	// less parsing and processing on it.
 	if strings.HasPrefix(rawText, b.cmdPrefix) {
 		msgParts := strings.SplitN(rawText, " ", 2)
 		if len(msgParts) < 2 {
@@ -281,22 +281,43 @@ func (b *Backend) handleMessageCreateImpl(s *discordgo.Session, m *discordgo.Mes
 		return
 	}
 
+	// Special case - if the original message started with the bot's user ID,
+	// make sure we trim that off before processing as a mention event.
 	mentionPrefix := fmt.Sprintf("<@%s>", s.State.User.ID)
 	if strings.HasPrefix(m.Content, mentionPrefix) {
 		msg := *m.Message
 		msg.Content = strings.TrimSpace(strings.TrimPrefix(m.Content, mentionPrefix))
 
+		rootBlock, _, err := TextToBlock(ReplaceMentions(b.logger, s, &msg))
+		if err != nil {
+			b.logger.Warn().Err(err).Msg("failed to convert message to blocks")
+			return
+		}
+
 		b.writeEvent(&pb.ChatEvent{Inner: &pb.ChatEvent_Mention{Mention: &pb.MentionEvent{
-			Source: source,
-			Text:   ReplaceMentions(b.logger, s, &msg),
+			Source:    source,
+			RootBlock: rootBlock,
 		}}})
 		return
 	}
 
-	b.writeEvent(&pb.ChatEvent{Inner: &pb.ChatEvent_Message{Message: &pb.MessageEvent{
-		Source: source,
-		Text:   rawText,
-	}}})
+	rootBlock, isAction, err := TextToBlock(rawText)
+	if err != nil {
+		b.logger.Warn().Err(err).Msg("failed to convert message to blocks")
+		return
+	}
+
+	if isAction {
+		b.writeEvent(&pb.ChatEvent{Inner: &pb.ChatEvent_Action{Action: &pb.ActionEvent{
+			Source:    source,
+			RootBlock: rootBlock,
+		}}})
+	} else {
+		b.writeEvent(&pb.ChatEvent{Inner: &pb.ChatEvent_Message{Message: &pb.MessageEvent{
+			Source:    source,
+			RootBlock: rootBlock,
+		}}})
+	}
 }
 
 func (b *Backend) sendJoinNotification(s *discordgo.Session, guildID, userID, channelID string, count int) {
@@ -430,13 +451,13 @@ func (b *Backend) handleIngest(ctx context.Context) {
 				}
 				_, err = b.discord.ChannelMessageSendComplex(v.SendMessage.ChannelId, &discordgo.MessageSend{
 					Content: msgText,
-					Flags: discordgo.MessageFlagsSuppressEmbeds,
+					Flags:   discordgo.MessageFlagsSuppressEmbeds,
 				})
 			case *pb.ChatRequest_SendPrivateMessage:
 				// TODO: this might not work
 				_, err = b.discord.ChannelMessageSendComplex(v.SendPrivateMessage.UserId, &discordgo.MessageSend{
 					Content: v.SendPrivateMessage.Text,
-					Flags: discordgo.MessageFlagsSuppressEmbeds,
+					Flags:   discordgo.MessageFlagsSuppressEmbeds,
 				})
 			case *pb.ChatRequest_PerformAction:
 				msgText := v.PerformAction.Text
@@ -446,14 +467,14 @@ func (b *Backend) handleIngest(ctx context.Context) {
 					b.logger.Warn().Err(err).Msg("Tried to send message to unknown channel")
 				}
 				_, err = b.discord.ChannelMessageSendComplex(v.PerformAction.ChannelId, &discordgo.MessageSend{
-					Content: "_"+msgText+"_",
-					Flags: discordgo.MessageFlagsSuppressEmbeds,
+					Content: "_" + msgText + "_",
+					Flags:   discordgo.MessageFlagsSuppressEmbeds,
 				})
 			case *pb.ChatRequest_PerformPrivateAction:
 				// TODO: this might not work
 				_, err = b.discord.ChannelMessageSendComplex(v.PerformPrivateAction.UserId, &discordgo.MessageSend{
-					Content: "_"+v.PerformPrivateAction.Text+"_",
-					Flags: discordgo.MessageFlagsSuppressEmbeds,
+					Content: "_" + v.PerformPrivateAction.Text + "_",
+					Flags:   discordgo.MessageFlagsSuppressEmbeds,
 				})
 			case *pb.ChatRequest_JoinChannel:
 				err = errors.New("unimplemented for discord")

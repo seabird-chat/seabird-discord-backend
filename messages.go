@@ -16,7 +16,6 @@ import (
 )
 
 // TODO: support timestamps
-// TODO: support custom emoji
 
 func maybeContainer(blocks ...*pb.Block) *pb.Block {
 	if len(blocks) == 1 {

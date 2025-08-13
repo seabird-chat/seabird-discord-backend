@@ -47,12 +47,12 @@ func New(config DiscordConfig) (*Backend, error) {
 
 	ciClient, err := seabird.NewChatIngestClient(config.SeabirdHost, config.SeabirdToken)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to create new chat ingest client: %w", err)
 	}
 
 	sbClient, err := seabird.NewClient(config.SeabirdHost, config.SeabirdToken)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to create new client: %w", err)
 	}
 
 	b := &Backend{
@@ -82,7 +82,7 @@ func New(config DiscordConfig) (*Backend, error) {
 
 	b.discord, err = discordgo.New(config.DiscordToken)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to create discord client: %w", err)
 	}
 
 	// Ideally we wouldn't need any additional intents, but in order to see all

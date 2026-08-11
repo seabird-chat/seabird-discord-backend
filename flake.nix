@@ -1,31 +1,67 @@
 {
   inputs = {
     nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
-    devshell.url = "github:numtide/devshell";
-    flake-utils.url = "github:numtide/flake-utils";
+    flake-parts = {
+      url = "github:hercules-ci/flake-parts";
+      inputs.nixpkgs-lib.follows = "nixpkgs";
+    };
   };
 
-  outputs = { self, flake-utils, devshell, nixpkgs, ... }:
-    flake-utils.lib.eachDefaultSystem (system: {
-      devShell =
-        let
-          pkgs = import nixpkgs {
-            inherit system;
+  outputs =
+    inputs@{
+      nixpkgs,
+      flake-parts,
+      ...
+    }:
+    flake-parts.lib.mkFlake { inherit inputs; } {
+      systems = nixpkgs.lib.systems.flakeExposed;
+      perSystem =
+        { pkgs, ... }:
+        {
+          formatter = pkgs.treefmt.withConfig {
+            runtimeInputs = [
+              pkgs.nixfmt
+              pkgs.gotools
+            ];
 
-            overlays = [
-              devshell.overlays.default
+            settings = {
+              on-unmatched = "info";
+
+              formatter.nixfmt = {
+                command = "nixfmt";
+                includes = [ "*.nix" ];
+              };
+
+              formatter.goimports = {
+                command = "goimports";
+                options = [ "-w" ];
+                includes = [ "*.go" ];
+              };
+            };
+          };
+
+          packages.default = pkgs.buildGoModule rec {
+            pname = "seabird-discord-backend";
+            version = "0.2.3-dev";
+
+            src = ./.;
+
+            vendorHash = "sha256-o7a9BAZrziqZfWVtr7hOhqjKGjsCL2cN8mOeRcfXxCI=";
+
+            subPackages = [ "cmd/${pname}" ];
+
+            ldflags = [
+              "-s"
+              "-w"
             ];
           };
-        in
-        pkgs.devshell.mkShell {
-          devshell.motd = "";
 
-          devshell.packages = [
-            pkgs.go
-            pkgs.protobuf
-            pkgs.protoc-gen-go
-            pkgs.protoc-gen-go-grpc
-          ];
+          devShells.default = pkgs.mkShell {
+            nativeBuildInputs = [
+              pkgs.go
+              pkgs.gopls
+            ];
+          };
         };
-    });
+    };
 }

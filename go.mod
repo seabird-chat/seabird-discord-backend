@@ -6,7 +6,6 @@ toolchain go1.23.6
 
 require (
 	github.com/bwmarrin/discordgo v0.28.1
-	github.com/joho/godotenv v1.5.1
 	github.com/mattn/go-isatty v0.0.20
 	github.com/rs/zerolog v1.33.0
 	github.com/seabird-chat/seabird-go v0.5.0

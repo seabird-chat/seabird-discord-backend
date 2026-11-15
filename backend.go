@@ -153,6 +153,17 @@ func (b *Backend) getReplacer(guildId string) *strings.Replacer {
 	return b.guildMentionCache[guildId]
 }
 
+// channelReplacer returns a func that converts @username to mentions for the
+// channel's guild.
+func (b *Backend) channelReplacer(channelID string) func(string) string {
+	c, err := b.discord.State.Channel(channelID)
+	if err != nil {
+		b.logger.Warn().Err(err).Msg("Tried to send message to unknown channel")
+		return nil
+	}
+	return b.getReplacer(c.GuildID).Replace
+}
+
 func (b *Backend) handleGuildCreate(s *discordgo.Session, m *discordgo.GuildCreate) {
 	for _, channel := range m.Channels {
 		if channel.Type != discordgo.ChannelTypeGuildText {
@@ -443,12 +454,7 @@ func (b *Backend) handleIngest(ctx context.Context) {
 
 			switch v := msg.Inner.(type) {
 			case *pb.ChatRequest_SendMessage:
-				msgText := v.SendMessage.Text
-				if c, err := b.discord.State.Channel(v.SendMessage.ChannelId); err == nil {
-					msgText = b.getReplacer(c.GuildID).Replace(msgText)
-				} else {
-					b.logger.Warn().Err(err).Msg("Tried to send message to unknown channel")
-				}
+				msgText := renderMessage(v.SendMessage.Text, v.SendMessage.RootBlock, b.channelReplacer(v.SendMessage.ChannelId))
 				_, err = b.discord.ChannelMessageSendComplex(v.SendMessage.ChannelId, &discordgo.MessageSend{
 					Content: msgText,
 					Flags:   discordgo.MessageFlagsSuppressEmbeds,
@@ -456,16 +462,11 @@ func (b *Backend) handleIngest(ctx context.Context) {
 			case *pb.ChatRequest_SendPrivateMessage:
 				// TODO: this might not work
 				_, err = b.discord.ChannelMessageSendComplex(v.SendPrivateMessage.UserId, &discordgo.MessageSend{
-					Content: v.SendPrivateMessage.Text,
+					Content: renderMessage(v.SendPrivateMessage.Text, v.SendPrivateMessage.RootBlock, nil),
 					Flags:   discordgo.MessageFlagsSuppressEmbeds,
 				})
 			case *pb.ChatRequest_PerformAction:
-				msgText := v.PerformAction.Text
-				if c, err := b.discord.State.Channel(v.PerformAction.ChannelId); err == nil {
-					msgText = b.getReplacer(c.GuildID).Replace(msgText)
-				} else {
-					b.logger.Warn().Err(err).Msg("Tried to send message to unknown channel")
-				}
+				msgText := renderMessage(v.PerformAction.Text, v.PerformAction.RootBlock, b.channelReplacer(v.PerformAction.ChannelId))
 				_, err = b.discord.ChannelMessageSendComplex(v.PerformAction.ChannelId, &discordgo.MessageSend{
 					Content: "_" + msgText + "_",
 					Flags:   discordgo.MessageFlagsSuppressEmbeds,
@@ -473,7 +474,7 @@ func (b *Backend) handleIngest(ctx context.Context) {
 			case *pb.ChatRequest_PerformPrivateAction:
 				// TODO: this might not work
 				_, err = b.discord.ChannelMessageSendComplex(v.PerformPrivateAction.UserId, &discordgo.MessageSend{
-					Content: "_" + v.PerformPrivateAction.Text + "_",
+					Content: "_" + renderMessage(v.PerformPrivateAction.Text, v.PerformPrivateAction.RootBlock, nil) + "_",
 					Flags:   discordgo.MessageFlagsSuppressEmbeds,
 				})
 			case *pb.ChatRequest_JoinChannel:

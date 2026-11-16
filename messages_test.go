@@ -148,7 +148,26 @@ func TestTextToBlocks(t *testing.T) {
 					seabird.NewTextBlock("hello"),
 					seabird.NewTextBlock(" world"),
 				),
+				seabird.NewTextBlock("\n"),
 				seabird.NewTextBlock("post-blank"),
+			),
+		},
+		{
+			name:  "blockquote-multiline",
+			input: "> hello\n> world",
+			expected: seabird.NewBlockquoteBlock(
+				seabird.NewContainerBlock(
+					seabird.NewTextBlock("hello\n"),
+					seabird.NewTextBlock("world"),
+				),
+			),
+		},
+		{
+			name:  "paragraph-line-break",
+			input: "hello\nworld",
+			expected: seabird.NewContainerBlock(
+				seabird.NewTextBlock("hello\n"),
+				seabird.NewTextBlock("world"),
 			),
 		},
 		{

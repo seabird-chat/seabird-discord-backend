@@ -126,6 +126,14 @@ func TestRenderMessage(t *testing.T) {
 			expected: "## Title\nintro\n- one\n- two\n> quoted",
 		},
 		{
+			name: "multiline-blockquote",
+			block: seabird.NewBlockquoteBlock(
+				seabird.NewTextBlock("hello\n"),
+				seabird.NewTextBlock("world"),
+			),
+			expected: "> hello\n> world",
+		},
+		{
 			name:     "timestamp",
 			block:    seabird.NewTimestampBlock(time.Unix(1700000000, 0)),
 			expected: "<t:1700000000:f>",
@@ -155,6 +163,8 @@ func TestRoundTrip(t *testing.T) {
 		"**Alice** sent *Master Sword* to **Bob**",
 		"__u__ ~~s~~ ||p|| `c`",
 		"[seabird](https://seabird.chat) and - *ab*",
+		"> hello\n> world",
+		"hello\nworld",
 	} {
 		block, _, err := TextToBlock(input)
 		assert.NoError(t, err)

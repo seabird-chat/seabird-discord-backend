@@ -123,8 +123,19 @@ func nodeToBlocks(doc ast.Node, src []byte) ([]*pb.Block, error) {
 				return nil, err
 			}
 			ret = append(ret, maybeContainer(nodes...))
+
+			// Separate paragraphs with a newline so they don't run together.
+			if cur.NextSibling() != nil {
+				ret = append(ret, seabird.NewTextBlock("\n"))
+			}
 		case *ast.Text:
-			ret = append(ret, seabird.NewTextBlock(string(node.Value(src))))
+			// goldmark strips line endings from the segment and records them
+			// as flags, so they have to be added back.
+			value := string(node.Value(src))
+			if node.SoftLineBreak() || node.HardLineBreak() {
+				value += "\n"
+			}
+			ret = append(ret, seabird.NewTextBlock(value))
 		case *ast.String:
 			ret = append(ret, seabird.NewTextBlock(string(node.Value)))
 		case *ast.AutoLink:

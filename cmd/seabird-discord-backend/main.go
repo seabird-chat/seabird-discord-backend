@@ -39,13 +39,12 @@ func main() {
 	logger.Level(zerolog.InfoLevel)
 
 	config := seabird_discord.DiscordConfig{
-		DiscordToken:          Env(logger, "DISCORD_TOKEN"),
-		CommandPrefix:         EnvDefault("DISCORD_COMMAND_PREFIX", "!"),
-		SeabirdID:             EnvDefault("SEABIRD_ID", "seabird"),
-		SeabirdHost:           Env(logger, "SEABIRD_HOST"),
-		SeabirdToken:          Env(logger, "SEABIRD_TOKEN"),
-		DiscordChannelMapping: EnvDefault("DISCORD_CHANNEL_MAP", ""),
-		Logger:                logger,
+		DiscordToken:  Env(logger, "DISCORD_TOKEN"),
+		CommandPrefix: EnvDefault("DISCORD_COMMAND_PREFIX", "!"),
+		SeabirdID:     EnvDefault("SEABIRD_ID", "seabird"),
+		SeabirdHost:   Env(logger, "SEABIRD_HOST"),
+		SeabirdToken:  Env(logger, "SEABIRD_TOKEN"),
+		Logger:        logger,
 	}
 
 	backend, err := seabird_discord.New(config)

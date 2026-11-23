@@ -17,13 +17,12 @@ import (
 )
 
 type DiscordConfig struct {
-	Logger                zerolog.Logger
-	CommandPrefix         string
-	DiscordToken          string
-	SeabirdID             string
-	SeabirdHost           string
-	SeabirdToken          string
-	DiscordChannelMapping string
+	Logger        zerolog.Logger
+	CommandPrefix string
+	DiscordToken  string
+	SeabirdID     string
+	SeabirdHost   string
+	SeabirdToken  string
 }
 
 type Backend struct {
@@ -32,14 +31,9 @@ type Backend struct {
 	logger                zerolog.Logger
 	discord               *discordgo.Session
 	grpc                  *seabird.ChatIngestClient
-	seabird               *seabird.Client
 	outputStream          chan *pb.ChatEvent
 	guildMentionCacheLock sync.Mutex
 	guildMentionCache     map[string]*strings.Replacer
-
-	channelMap   map[string]string
-	userMapping  map[string]string
-	channelCount map[string]int
 }
 
 func New(config DiscordConfig) (*Backend, error) {
@@ -50,34 +44,13 @@ func New(config DiscordConfig) (*Backend, error) {
 		return nil, fmt.Errorf("failed to create new chat ingest client: %w", err)
 	}
 
-	sbClient, err := seabird.NewClient(config.SeabirdHost, config.SeabirdToken)
-	if err != nil {
-		return nil, fmt.Errorf("failed to create new client: %w", err)
-	}
-
 	b := &Backend{
 		id:                config.SeabirdID,
 		logger:            config.Logger,
 		cmdPrefix:         config.CommandPrefix,
 		grpc:              ciClient,
-		seabird:           sbClient,
 		outputStream:      make(chan *pb.ChatEvent, 10),
 		guildMentionCache: make(map[string]*strings.Replacer),
-		channelMap:        make(map[string]string),
-		userMapping:       make(map[string]string),
-		channelCount:      make(map[string]int),
-	}
-
-	// Convert the channel mapping into a useful format
-	if config.DiscordChannelMapping != "" {
-		for _, item := range strings.Split(config.DiscordChannelMapping, ",") {
-			split := strings.SplitN(item, ":", 2)
-			if len(split) != 2 {
-				return nil, errors.New("invalid channel mapping")
-			}
-
-			b.channelMap[split[0]] = split[1]
-		}
 	}
 
 	b.discord, err = discordgo.New(config.DiscordToken)
@@ -98,7 +71,6 @@ func New(config DiscordConfig) (*Backend, error) {
 	b.discord.AddHandler(b.handleGuildCreate)
 	b.discord.AddHandler(b.handleGuildDelete)
 	//b.discord.AddHandler(b.handleChannelEdit)
-	b.discord.AddHandler(b.handleVoiceStateUpdate)
 	b.discord.AddHandler(b.handleDiscordLog)
 
 	b.discord.AddHandler(b.handleGuildMemberAdd)
@@ -328,72 +300,6 @@ func (b *Backend) handleMessageCreateImpl(s *discordgo.Session, m *discordgo.Mes
 			Source:    source,
 			RootBlock: rootBlock,
 		}}})
-	}
-}
-
-func (b *Backend) sendJoinNotification(s *discordgo.Session, guildID, userID, channelID string, count int) {
-	if count != 1 {
-		return
-	}
-
-	userInfo, err := s.State.Member(guildID, userID)
-	if err != nil {
-		fmt.Println(err)
-		return
-	}
-	userName := userInfo.Nick
-	if userName == "" {
-		if userInfo.User != nil {
-			userName = userInfo.User.Username
-		} else {
-			userName = "Someone"
-		}
-	}
-
-	channelInfo, err := s.State.Channel(channelID)
-	if err != nil {
-		fmt.Println(err)
-		return
-	}
-
-	ctx, cancel := context.WithTimeout(context.Background(), time.Second*5)
-	defer cancel()
-
-	_, err = b.seabird.Inner.SendMessage(ctx, &pb.SendMessageRequest{
-		ChannelId: b.channelMap[channelID],
-		Text:      fmt.Sprintf("%s has joined voice channel %s", userName, channelInfo.Mention()),
-	})
-	if err != nil {
-		fmt.Println(err)
-		return
-	}
-}
-
-func (b *Backend) handleVoiceStateUpdate(s *discordgo.Session, m *discordgo.VoiceStateUpdate) {
-	prevChannel := b.userMapping[m.UserID]
-	targetChannel := m.ChannelID
-
-	if targetChannel == "" {
-		delete(b.userMapping, m.UserID)
-	} else {
-		b.userMapping[m.UserID] = targetChannel
-	}
-
-	// If the user changed channels
-	if prevChannel != targetChannel {
-		if prevChannel != "" {
-			b.channelCount[prevChannel] -= 1
-
-			if b.channelCount[prevChannel] == 0 {
-				delete(b.channelCount, prevChannel)
-			}
-		}
-
-		if targetChannel != "" && b.channelMap[targetChannel] != "" {
-			b.channelCount[targetChannel] += 1
-
-			b.sendJoinNotification(s, m.GuildID, m.UserID, targetChannel, b.channelCount[targetChannel])
-		}
 	}
 }
 

@@ -410,7 +410,9 @@ func (b *Backend) writeEvent(e *pb.ChatEvent) {
 }
 
 func (b *Backend) handleIngest(ctx context.Context) {
-	ingestStream, err := b.grpc.IngestEvents("discord", b.id)
+	ingestStream, err := b.grpc.IngestEventsWithHello(&pb.HelloChatEvent{
+		BackendInfo: &pb.HelloChatEvent_Backend{Type: "discord", Id: b.id, DisplayName: "Discord"},
+	})
 	if err != nil {
 		b.logger.Warn().Err(err).Msg("got error while calling ingest events")
 		return

@@ -4,6 +4,8 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"maps"
+	"slices"
 	"strings"
 	"sync"
 	"time"
@@ -26,12 +28,18 @@ type DiscordConfig struct {
 }
 
 type Backend struct {
-	id                    string
-	cmdPrefix             string
-	logger                zerolog.Logger
-	discord               *discordgo.Session
-	grpc                  *seabird.ChatIngestClient
-	outputStream          chan *pb.ChatEvent
+	id           string
+	cmdPrefix    string
+	logger       zerolog.Logger
+	discord      *discordgo.Session
+	grpc         *seabird.ChatIngestClient
+	outputStream chan *pb.ChatEvent
+
+	// channelsChanged tells the ingest stream that the channels in
+	// discord.State changed. Changes are compared against what was last
+	// sent, so any number of them collapse into one signal.
+	channelsChanged chan struct{}
+
 	guildMentionCacheLock sync.Mutex
 	guildMentionCache     map[string]*strings.Replacer
 }
@@ -50,6 +58,7 @@ func New(config DiscordConfig) (*Backend, error) {
 		cmdPrefix:         config.CommandPrefix,
 		grpc:              ciClient,
 		outputStream:      make(chan *pb.ChatEvent, 10),
+		channelsChanged:   make(chan struct{}, 1),
 		guildMentionCache: make(map[string]*strings.Replacer),
 	}
 
@@ -68,9 +77,13 @@ func New(config DiscordConfig) (*Backend, error) {
 			discordgo.IntentsGuildPresences)
 
 	b.discord.AddHandler(b.handleMessageCreate)
-	b.discord.AddHandler(b.handleGuildCreate)
-	b.discord.AddHandler(b.handleGuildDelete)
-	//b.discord.AddHandler(b.handleChannelEdit)
+	// discordgo updates its state before calling handlers, so these only need
+	// to say that something changed.
+	b.discord.AddHandler(func(*discordgo.Session, *discordgo.GuildCreate) { b.markChannelsChanged() })
+	b.discord.AddHandler(func(*discordgo.Session, *discordgo.GuildDelete) { b.markChannelsChanged() })
+	b.discord.AddHandler(func(*discordgo.Session, *discordgo.ChannelCreate) { b.markChannelsChanged() })
+	b.discord.AddHandler(func(*discordgo.Session, *discordgo.ChannelUpdate) { b.markChannelsChanged() })
+	b.discord.AddHandler(func(*discordgo.Session, *discordgo.ChannelDelete) { b.markChannelsChanged() })
 	b.discord.AddHandler(b.handleDiscordLog)
 
 	b.discord.AddHandler(b.handleGuildMemberAdd)
@@ -136,40 +149,67 @@ func (b *Backend) channelReplacer(channelID string) func(string) string {
 	return b.getReplacer(c.GuildID).Replace
 }
 
-func (b *Backend) handleGuildCreate(s *discordgo.Session, m *discordgo.GuildCreate) {
-	for _, channel := range m.Channels {
-		if channel.Type != discordgo.ChannelTypeGuildText {
-			continue
-		}
-
-		b.writeEvent(&pb.ChatEvent{Inner: &pb.ChatEvent_JoinChannel{JoinChannel: &pb.JoinChannelChatEvent{
-			ChannelId:   channel.ID,
-			DisplayName: channel.Name,
-			Topic:       channel.Topic,
-		}}})
+// markChannelsChanged tells the ingest stream to send core any channel changes.
+func (b *Backend) markChannelsChanged() {
+	select {
+	case b.channelsChanged <- struct{}{}:
+	default:
+		// A change is already waiting to be sent.
 	}
 }
 
-func (b *Backend) handleGuildDelete(s *discordgo.Session, m *discordgo.GuildDelete) {
-	for _, channel := range m.Channels {
-		if channel.Type != discordgo.ChannelTypeGuildText {
-			continue
-		}
-
-		b.writeEvent(&pb.ChatEvent{Inner: &pb.ChatEvent_LeaveChannel{LeaveChannel: &pb.LeaveChannelChatEvent{
-			ChannelId: channel.ID,
-		}}})
-	}
+// channelInfo is what core is told about a channel.
+type channelInfo struct {
+	Name  string
+	Topic string
 }
 
-func (b *Backend) handleChannelEdit(s *discordgo.Session, m *discordgo.ChannelUpdate) {
-	fmt.Printf("%+v\n", m)
+// currentChannels returns every text channel the bot can see, by ID.
+func (b *Backend) currentChannels() map[string]channelInfo {
+	b.discord.State.RLock()
+	defer b.discord.State.RUnlock()
 
-	/*
-		b.writeEvent(&pb.ChatEvent{Inner: &pb.ChatEvent_ChangeChannel{ChangeChannel: &pb.ChangeChannelChatEvent{
-			ChannelId: m.ID,
-		}}})
-	*/
+	channels := make(map[string]channelInfo)
+	for _, guild := range b.discord.State.Guilds {
+		for _, channel := range guild.Channels {
+			if channel.Type == discordgo.ChannelTypeGuildText {
+				channels[channel.ID] = channelInfo{Name: channel.Name, Topic: channel.Topic}
+			}
+		}
+	}
+	return channels
+}
+
+// channelEvents returns the events that take core from the channels in sent
+// to the ones in current.
+func channelEvents(sent, current map[string]channelInfo) []*pb.ChatEvent {
+	var events []*pb.ChatEvent
+	for _, id := range slices.Sorted(maps.Keys(current)) {
+		channel := current[id]
+		old, known := sent[id]
+		switch {
+		case !known:
+			events = append(events, &pb.ChatEvent{Inner: &pb.ChatEvent_JoinChannel{JoinChannel: &pb.JoinChannelChatEvent{
+				ChannelId:   id,
+				DisplayName: channel.Name,
+				Topic:       channel.Topic,
+			}}})
+		case old != channel:
+			events = append(events, &pb.ChatEvent{Inner: &pb.ChatEvent_ChangeChannel{ChangeChannel: &pb.ChangeChannelChatEvent{
+				ChannelId:   id,
+				DisplayName: channel.Name,
+				Topic:       channel.Topic,
+			}}})
+		}
+	}
+	for _, id := range slices.Sorted(maps.Keys(sent)) {
+		if _, ok := current[id]; !ok {
+			events = append(events, &pb.ChatEvent{Inner: &pb.ChatEvent_LeaveChannel{LeaveChannel: &pb.LeaveChannelChatEvent{
+				ChannelId: id,
+			}}})
+		}
+	}
+	return events
 }
 
 func (b *Backend) handleMessageCreate(s *discordgo.Session, m *discordgo.MessageCreate) {
@@ -341,8 +381,32 @@ func (b *Backend) handleIngest(ctx context.Context) {
 		return
 	}
 
+	// Core forgets a backend's channels when its stream ends, so each stream
+	// starts from nothing and is sent every channel, then whatever changes.
+	var sent map[string]channelInfo
+	syncChannels := func() error {
+		current := b.currentChannels()
+		for _, event := range channelEvents(sent, current) {
+			if err := ingestStream.Send(event); err != nil {
+				return err
+			}
+		}
+		sent = current
+		return nil
+	}
+	if err := syncChannels(); err != nil {
+		b.logger.Warn().Err(err).Msg("got error while sending channels")
+		return
+	}
+
 	for {
 		select {
+		case <-b.channelsChanged:
+			if err := syncChannels(); err != nil {
+				b.logger.Warn().Err(err).Msg("got error while sending channels")
+				return
+			}
+
 		case event := <-b.outputStream:
 			b.logger.Debug().Msgf("Sending event: %+v", event)
 

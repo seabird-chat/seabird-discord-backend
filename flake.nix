@@ -42,7 +42,7 @@
 
           packages.default = pkgs.buildGoModule rec {
             pname = "seabird-discord-backend";
-            version = "0.3.3";
+            version = "0.3.4-dev";
 
             src = ./.;
 

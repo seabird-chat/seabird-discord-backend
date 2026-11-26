@@ -84,6 +84,11 @@ func New(config DiscordConfig) (*Backend, error) {
 	b.discord.AddHandler(func(*discordgo.Session, *discordgo.ChannelCreate) { b.markChannelsChanged() })
 	b.discord.AddHandler(func(*discordgo.Session, *discordgo.ChannelUpdate) { b.markChannelsChanged() })
 	b.discord.AddHandler(func(*discordgo.Session, *discordgo.ChannelDelete) { b.markChannelsChanged() })
+
+	// Which channels the bot can view depends on its roles too.
+	b.discord.AddHandler(func(*discordgo.Session, *discordgo.GuildRoleCreate) { b.markChannelsChanged() })
+	b.discord.AddHandler(func(*discordgo.Session, *discordgo.GuildRoleUpdate) { b.markChannelsChanged() })
+	b.discord.AddHandler(func(*discordgo.Session, *discordgo.GuildRoleDelete) { b.markChannelsChanged() })
 	b.discord.AddHandler(b.handleDiscordLog)
 
 	b.discord.AddHandler(b.handleGuildMemberAdd)
@@ -107,6 +112,11 @@ func (b *Backend) handleGuildMemberAdd(s *discordgo.Session, m *discordgo.GuildM
 
 func (b *Backend) handleGuildMemberUpdate(s *discordgo.Session, m *discordgo.GuildMemberUpdate) {
 	b.markGuildMentionCacheStale(m.GuildID)
+
+	// The bot's own roles decide which channels it can view.
+	if m.User != nil && s.State.User != nil && m.User.ID == s.State.User.ID {
+		b.markChannelsChanged()
+	}
 }
 
 func (b *Backend) handleGuildMemberRemove(s *discordgo.Session, m *discordgo.GuildMemberRemove) {
@@ -165,19 +175,44 @@ type channelInfo struct {
 }
 
 // currentChannels returns every text channel the bot can see, by ID.
+// Channels the bot can't view are left out: discord sends them with a
+// placeholder name and nothing can be read or sent there.
 func (b *Backend) currentChannels() map[string]channelInfo {
-	b.discord.State.RLock()
-	defer b.discord.State.RUnlock()
+	state := b.discord.State
 
+	state.RLock()
+	var botID string
+	if state.User != nil {
+		botID = state.User.ID
+	}
 	channels := make(map[string]channelInfo)
-	for _, guild := range b.discord.State.Guilds {
+	for _, guild := range state.Guilds {
 		for _, channel := range guild.Channels {
 			if channel.Type == discordgo.ChannelTypeGuildText {
 				channels[channel.ID] = channelInfo{Name: channel.Name, Topic: channel.Topic}
 			}
 		}
 	}
+	state.RUnlock()
+
+	// Checking permissions takes the state lock, so it waits until the
+	// channels have been read.
+	for id := range channels {
+		if !canView(state, botID, id) {
+			delete(channels, id)
+		}
+	}
 	return channels
+}
+
+// canView reports whether userID can see a channel. Without enough state to
+// tell, it assumes they can.
+func canView(state *discordgo.State, userID, channelID string) bool {
+	permissions, err := state.UserChannelPermissions(userID, channelID)
+	if err != nil {
+		return true
+	}
+	return permissions&discordgo.PermissionViewChannel != 0
 }
 
 // channelEvents returns the events that take core from the channels in sent

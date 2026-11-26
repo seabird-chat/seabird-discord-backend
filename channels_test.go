@@ -3,6 +3,7 @@ package seabird_discord
 import (
 	"testing"
 
+	"github.com/bwmarrin/discordgo"
 	"github.com/seabird-chat/seabird-go/pb"
 	"github.com/stretchr/testify/assert"
 	"google.golang.org/protobuf/proto"
@@ -58,4 +59,42 @@ func TestChannelEvents(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestCurrentChannelsSkipsHidden(t *testing.T) {
+	const guildID, botID, roleID = "g", "bot", "role"
+
+	deny := func(id string) []*discordgo.PermissionOverwrite {
+		return []*discordgo.PermissionOverwrite{
+			{ID: guildID, Type: discordgo.PermissionOverwriteTypeRole, Deny: discordgo.PermissionViewChannel},
+			{ID: id, Type: discordgo.PermissionOverwriteTypeRole, Allow: discordgo.PermissionViewChannel},
+		}
+	}
+
+	state := discordgo.NewState()
+	state.User = &discordgo.User{ID: botID}
+	err := state.GuildAdd(&discordgo.Guild{
+		ID: guildID,
+		Roles: []*discordgo.Role{
+			// @everyone shares the guild's ID.
+			{ID: guildID, Permissions: discordgo.PermissionViewChannel},
+			{ID: roleID},
+		},
+		Channels: []*discordgo.Channel{
+			{ID: "visible", GuildID: guildID, Name: "general", Type: discordgo.ChannelTypeGuildText},
+			{ID: "hidden", GuildID: guildID, Name: "___hidden___", Type: discordgo.ChannelTypeGuildText,
+				PermissionOverwrites: deny("someone-else")},
+			{ID: "role-only", GuildID: guildID, Name: "staff", Type: discordgo.ChannelTypeGuildText,
+				PermissionOverwrites: deny(roleID)},
+			{ID: "voice", GuildID: guildID, Name: "voice", Type: discordgo.ChannelTypeGuildVoice},
+		},
+		Members: []*discordgo.Member{{GuildID: guildID, User: &discordgo.User{ID: botID}, Roles: []string{roleID}}},
+	})
+	assert.NoError(t, err)
+
+	b := &Backend{discord: &discordgo.Session{State: state}}
+	assert.Equal(t, map[string]channelInfo{
+		"visible":   {Name: "general"},
+		"role-only": {Name: "staff"},
+	}, b.currentChannels())
 }

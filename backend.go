@@ -42,6 +42,14 @@ type Backend struct {
 
 	guildMentionCacheLock sync.Mutex
 	guildMentionCache     map[string]*strings.Replacer
+
+	// webhooks are what messages on someone's behalf are posted through, by
+	// channel ID. ownWebhooks is every webhook ID they've used, so their posts
+	// aren't sent back to core.
+	webhookLock     sync.Mutex
+	webhooks        map[string]*discordgo.Webhook
+	webhookFailures map[string]time.Time
+	ownWebhooks     map[string]bool
 }
 
 func New(config DiscordConfig) (*Backend, error) {
@@ -60,6 +68,9 @@ func New(config DiscordConfig) (*Backend, error) {
 		outputStream:      make(chan *pb.ChatEvent, 10),
 		channelsChanged:   make(chan struct{}, 1),
 		guildMentionCache: make(map[string]*strings.Replacer),
+		webhooks:          make(map[string]*discordgo.Webhook),
+		webhookFailures:   make(map[string]time.Time),
+		ownWebhooks:       make(map[string]bool),
 	}
 
 	b.discord, err = discordgo.New(config.DiscordToken)
@@ -254,6 +265,12 @@ func (b *Backend) handleMessageCreate(s *discordgo.Session, m *discordgo.Message
 		return
 	}
 
+	// Messages posted through the backend's webhooks came from core, so they
+	// are ignored too.
+	if m.WebhookID != "" && b.isOwnWebhook(m.WebhookID) {
+		return
+	}
+
 	b.handleMessageCreateImpl(s, m)
 
 	// All attachments count as regular message events
@@ -412,6 +429,7 @@ func (b *Backend) writeEvent(e *pb.ChatEvent) {
 func (b *Backend) handleIngest(ctx context.Context) {
 	ingestStream, err := b.grpc.IngestEventsWithHello(&pb.HelloChatEvent{
 		BackendInfo: &pb.HelloChatEvent_Backend{Type: "discord", Id: b.id, DisplayName: "Discord"},
+		Features:    []pb.BackendFeature{pb.BackendFeature_BACKEND_FEATURE_AUTHOR},
 	})
 	if err != nil {
 		b.logger.Warn().Err(err).Msg("got error while calling ingest events")
@@ -461,11 +479,8 @@ func (b *Backend) handleIngest(ctx context.Context) {
 
 			switch v := msg.Inner.(type) {
 			case *pb.ChatRequest_SendMessage:
-				msgText := renderMessage(v.SendMessage.Text, v.SendMessage.RootBlock, b.channelReplacer(v.SendMessage.ChannelId))
-				_, err = b.discord.ChannelMessageSendComplex(v.SendMessage.ChannelId, &discordgo.MessageSend{
-					Content: msgText,
-					Flags:   discordgo.MessageFlagsSuppressEmbeds,
-				})
+				req := v.SendMessage
+				err = b.sendToChannel(req.ChannelId, req.Text, req.RootBlock, false, req.Author, req.AuthorBackend)
 			case *pb.ChatRequest_SendPrivateMessage:
 				// TODO: this might not work
 				_, err = b.discord.ChannelMessageSendComplex(v.SendPrivateMessage.UserId, &discordgo.MessageSend{
@@ -473,11 +488,8 @@ func (b *Backend) handleIngest(ctx context.Context) {
 					Flags:   discordgo.MessageFlagsSuppressEmbeds,
 				})
 			case *pb.ChatRequest_PerformAction:
-				msgText := renderMessage(v.PerformAction.Text, v.PerformAction.RootBlock, b.channelReplacer(v.PerformAction.ChannelId))
-				_, err = b.discord.ChannelMessageSendComplex(v.PerformAction.ChannelId, &discordgo.MessageSend{
-					Content: "_" + msgText + "_",
-					Flags:   discordgo.MessageFlagsSuppressEmbeds,
-				})
+				req := v.PerformAction
+				err = b.sendToChannel(req.ChannelId, req.Text, req.RootBlock, true, req.Author, req.AuthorBackend)
 			case *pb.ChatRequest_PerformPrivateAction:
 				// TODO: this might not work
 				_, err = b.discord.ChannelMessageSendComplex(v.PerformPrivateAction.UserId, &discordgo.MessageSend{

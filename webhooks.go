@@ -53,6 +53,7 @@ func (b *Backend) sendToChannel(channelID, text string, block *pb.Block, action 
 		_, err := b.discord.WebhookExecute(hook.ID, hook.Token, true, &discordgo.WebhookParams{
 			Content:         render(text, block, action),
 			Username:        label,
+			AvatarURL:       b.discord.State.User.AvatarURL(""),
 			AllowedMentions: authorMentions,
 			Flags:           discordgo.MessageFlagsSuppressEmbeds,
 		})

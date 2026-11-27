@@ -18,6 +18,10 @@ import (
 	"github.com/seabird-chat/seabird-go/pb"
 )
 
+// linkPreviewTag marks messages that preview a link. Discord shows its own
+// previews, so these are dropped.
+const linkPreviewTag = "seabird/link-preview"
+
 type DiscordConfig struct {
 	Logger        zerolog.Logger
 	CommandPrefix string
@@ -480,7 +484,11 @@ func (b *Backend) handleIngest(ctx context.Context) {
 			switch v := msg.Inner.(type) {
 			case *pb.ChatRequest_SendMessage:
 				req := v.SendMessage
-				err = b.sendToChannel(req.ChannelId, req.Text, req.RootBlock, false, req.Author, req.AuthorBackend)
+				if _, ok := req.Tags[linkPreviewTag]; ok {
+					err = nil
+				} else {
+					err = b.sendToChannel(req.ChannelId, req.Text, req.RootBlock, false, req.Author, req.AuthorBackend)
+				}
 			case *pb.ChatRequest_SendPrivateMessage:
 				// TODO: this might not work
 				_, err = b.discord.ChannelMessageSendComplex(v.SendPrivateMessage.UserId, &discordgo.MessageSend{
